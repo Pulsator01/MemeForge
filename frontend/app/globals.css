@@ -1,0 +1,142 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --neon-blue: 32, 169, 255;
+  --neon-purple: 187, 64, 255;
+  --neon-green: 68, 255, 161;
+  --glass-opacity: 0.15;
+  --glass-blur: 12px;
+}
+
+@layer base {
+  :root {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 189 100% 50%;
+    --primary-foreground: 0 0% 98%;
+    --secondary: 270 100% 60%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 5% 25%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 150 100% 50%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5% 25%;
+    --input: 240 5% 25%;
+    --ring: 189 100% 50%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+.glassmorphic {
+  @apply backdrop-blur-lg bg-black/[.15] border border-white/10;
+}
+
+.neon-border {
+  @apply relative;
+}
+
+.neon-border::before {
+  content: '';
+  @apply absolute inset-0 rounded-lg;
+  background: linear-gradient(
+    45deg,
+    rgba(var(--neon-blue), 0.5),
+    rgba(var(--neon-purple), 0.5),
+    rgba(var(--neon-green), 0.5)
+  );
+  z-index: -1;
+  filter: blur(8px);
+  transition: opacity 0.3s ease;
+  opacity: 0;
+}
+
+.neon-border:hover::before {
+  opacity: 1;
+}
+
+.text-gradient {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-[#32A9FF] via-[#BB40FF] to-[#44FFA1] animate-gradient;
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+.float-animation {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-black/30;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-gradient-to-b from-[#32A9FF] via-[#BB40FF] to-[#44FFA1] rounded-full;
+}
+
+/* Loading Animation */
+.loading-hologram {
+  @apply relative;
+}
+
+.loading-hologram::before {
+  content: '';
+  @apply absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent;
+  animation: hologram 1.5s linear infinite;
+}
+
+@keyframes hologram {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes gradient {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.animate-gradient {
+  background-size: 200% auto;
+  animation: gradient 8s linear infinite;
+}
