@@ -1,28 +1,20 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.28;
 
-// Uncomment this line to use console.log
-// import "hardhat/console.sol";
-
 import "./Memecoin.sol";
-import "./interfaces/ISpookySwapFactory.sol";
 import "./interfaces/IPositionManager.sol";
-import "./interfaces/ISwapRouter.sol";
-import "./interfaces/IQuoter.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
-contract Launchpad is Ownable {
-    address constant factoryAddress = 0x3D91B700252e0E3eE7805d12e048a988Ab69C8ad;
+contract Launchpad is Ownable, ReentrancyGuard {
+    using SafeERC20 for IERC20;
+
     address constant positionManagerAddress = 0xf807Aca27B1550Fe778fD4E7013BB57480b17fAc;
-    address constant swapRouterAddress = 0x0C2BC01d435CfEb2DC6Ad7cEC0E473e2DBaBdd87;
-    address constant quoterAddress = 0x593856bbfd6Aaf0b714277c0BF06307900d1Aa68;
     uint24 constant fee = 3000;
 
-    ISpookySwapFactory public factory = ISpookySwapFactory(factoryAddress);
     IPositionManager public positionManager = IPositionManager(positionManagerAddress);
-    ISwapRouter public swapRouter = ISwapRouter(swapRouterAddress);
-    IQuoter public quoter = IQuoter(quoterAddress);
 
     event TokenLaunched(address indexed creator, address tokenAddress, address poolAddress);
 
@@ -34,52 +26,86 @@ contract Launchpad is Ownable {
         uint256 initialSupply,
         address pairedToken,
         uint256 liquidityMemecoinAmount,
-        uint256 liquidityPairedTokenAmount
-    ) external returns (address) {
-        // Deploy the memecoin with the full initial supply.
-        Memecoin token = new Memecoin(name, symbol, initialSupply);
-        // Transfer ownership of the token to the creator.
-        token.transferOwnership(msg.sender);
+        uint256 liquidityPairedTokenAmount,
+        uint160 initialSqrtPriceX96
+    ) external nonReentrant returns (address) {
+        // Enhanced input validation
+        require(bytes(name).length > 0, "Token name cannot be empty");
+        require(bytes(symbol).length > 0, "Token symbol cannot be empty");
+        require(initialSupply > 0, "Initial supply must be greater than 0");
+        require(pairedToken != address(0), "Paired token address cannot be zero");
+        require(liquidityMemecoinAmount > 0, "Liquidity memecoin amount must be greater than 0");
+        require(liquidityPairedTokenAmount > 0, "Liquidity paired token amount must be greater than 0");
+        require(initialSupply >= liquidityMemecoinAmount, "Initial supply must cover liquidity");
+        require(initialSqrtPriceX96 > 0, "Initial price must be greater than zero");
 
-        // Transfer the liquidity deposit for the paired token from the user.
         IERC20 pairedTokenContract = IERC20(pairedToken);
         require(
-            pairedTokenContract.transferFrom(msg.sender, address(this), liquidityPairedTokenAmount),
-            "Paired token transfer failed"
+            pairedTokenContract.balanceOf(msg.sender) >= liquidityPairedTokenAmount,
+            "Insufficient paired token balance"
         );
 
-        // Approve the position manager to spend the paired token liquidity.
-        require(
-            pairedTokenContract.approve(positionManagerAddress, liquidityPairedTokenAmount),
-            "Approval failed"
-        );
+        // Deploy memecoin and validate
+        Memecoin token = new Memecoin(name, symbol, initialSupply);
+        require(address(token) != pairedToken, "Cannot pair with itself");
+        token.transferOwnership(msg.sender);
 
-        // Check if the pool exists; if not, create it.
-        address pool = factory.getPool(address(token), pairedToken, fee);
-        if (pool == address(0)) {
-            pool = factory.createPool(address(token), pairedToken, fee);
-        }
+        // Transfer paired tokens to the contract
+        pairedTokenContract.safeTransferFrom(msg.sender, address(this), liquidityPairedTokenAmount);
 
-        // Call the position manager's mint function to add liquidity.
-        // liquidityMemecoinAmount: amount of memecoin to add.
-        // liquidityPairedTokenAmount: amount of the paired token to add.
-        positionManager.mint(
-            address(token),
-            pairedToken,
+        // Approve position manager to spend tokens
+        token.safeApprove(address(positionManager), liquidityMemecoinAmount);
+        pairedTokenContract.safeApprove(address(positionManager), liquidityPairedTokenAmount);
+
+        // Determine token0 and token1 (lower address is token0)
+        (address token0, address token1) = address(token) < pairedToken
+            ? (address(token), pairedToken)
+            : (pairedToken, address(token));
+
+        // Create and initialize pool
+        address pool = positionManager.createAndInitializePoolIfNecessary(
+            token0,
+            token1,
             fee,
-            -60000,
-            60000,
-            liquidityMemecoinAmount,
-            liquidityPairedTokenAmount,
-            0,
-            0,
-            msg.sender,
-            block.timestamp + 300
+            initialSqrtPriceX96
         );
+
+        // Mint liquidity position
+        positionManager.mint(
+            IPositionManager.MintParams({
+                token0: token0,
+                token1: token1,
+                fee: fee,
+                tickLower: -60000,
+                tickUpper: 60000,
+                amount0Desired: token0 == address(token) ? liquidityMemecoinAmount : liquidityPairedTokenAmount,
+                amount1Desired: token1 == address(token) ? liquidityMemecoinAmount : liquidityPairedTokenAmount,
+                amount0Min: 0,
+                amount1Min: 0,
+                recipient: msg.sender,
+                deadline: block.timestamp + 300
+            })
+        );
+
+        // Return remaining tokens to the user
+        uint256 remainingMemecoin = token.balanceOf(address(this));
+        if (remainingMemecoin > 0) {
+            token.safeTransfer(msg.sender, remainingMemecoin);
+        }
+        uint256 remainingPaired = pairedTokenContract.balanceOf(address(this));
+        if (remainingPaired > 0) {
+            pairedTokenContract.safeTransfer(msg.sender, remainingPaired);
+        }
 
         emit TokenLaunched(msg.sender, address(token), pool);
         return address(token);
     }
+
+    // Moved here for better ordering; secured with additional checks
+    function withdrawToken(address tokenAddress, uint256 amount) external onlyOwner {
+        require(tokenAddress != address(0), "Invalid token address");
+        IERC20 tokenContract = IERC20(tokenAddress);
+        require(tokenContract.balanceOf(address(this)) >= amount, "Insufficient balance");
+        tokenContract.safeTransfer(msg.sender, amount);
+    }
 }
-
-
