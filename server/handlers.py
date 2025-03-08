@@ -1,15 +1,34 @@
 import json
 import logging
 import openai
-from src.constants import OPENAI_API_KEY
+from constants import OPENAI_API_KEY
 from src.prompts import SONIC_ACTION_PROMPT, RESPONSE_PROMPT
-from .models import AgentManager
-from .farcaster_utils import FarcasterBot
-from src.multi_agent_manager import manager
+from models import AgentManager, convert_zeropy_to_agent_config
+from farcaster_utils import FarcasterBot
+from src.multi_agent_manager import MultiAgentManager
 import traceback
 
 # Configure logging
 logger = logging.getLogger("farcaster_bot")
+logging.basicConfig(level=logging.INFO, format='%(message)s')
+
+manager = MultiAgentManager()
+loaded_agents = manager.load_agents_from_file("meme_agents")
+if not loaded_agents:
+    raise ValueError("No agents were loaded")
+
+# Initialize AgentManager with loaded agents
+for agent_name in loaded_agents:
+    zeropy_agent = manager.agents[agent_name]
+    agent_config = convert_zeropy_to_agent_config(zeropy_agent)
+    AgentManager.add_agent(agent_config)
+    # list all supported actions
+    logger.info(f"Supported actions: {zeropy_agent}")
+    # Ensure LLM is set up
+    if not zeropy_agent.is_llm_set:
+        zeropy_agent._setup_llm_provider()
+
+logger.info(f"Loaded agents: {loaded_agents}")
 
 async def handle_webhook(request_body):
     """Handle incoming webhook requests"""

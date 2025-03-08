@@ -1,9 +1,10 @@
 import logging
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException
-from farcaster_bot import handle_webhook
-from src.multi_agent_manager import MultiAgentManager
+from handlers import handle_webhook
 from models import AgentConfig, AgentManager
+from src.multi_agent_manager import MultiAgentManager
+from fastapi.middleware.cors import CORSMiddleware
 
 
 # Configure logging
@@ -12,6 +13,15 @@ logger = logging.getLogger("farcaster_bot")
 
 # Initialize FastAPI app
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 @app.post("/")
 async def webhook(request: Request):
@@ -23,6 +33,10 @@ async def webhook(request: Request):
     except Exception as e:
         logger.error(f"Error processing webhook: {e}")
         return {"error": str(e)}, 500
+
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
 
 @app.post("/agents")
 async def add_agent(agent_config: AgentConfig):
