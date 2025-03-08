@@ -1,7 +1,7 @@
 "use client"
 
 import { motion } from 'framer-motion'
-import { Rocket, TrendingUp, Users, ArrowRight } from 'lucide-react'
+import { Rocket, TrendingUp, Users, ArrowRight, MessageCircle } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Agent } from '@/components/AgentCard'
@@ -49,6 +49,13 @@ export default function Home() {
 
     loadAgents()
   }, [])
+
+  // Function to open Warpcast compose URL
+  const openWarpcastCompose = (agentName: string) => {
+    const message = `${agentName}!! sup how are we doing?`;
+    const url = `https://warpcast.com/~/compose?text=@tonty.eth ${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
 
   return (
     <main className="min-h-screen relative overflow-hidden">
@@ -219,15 +226,17 @@ export default function Home() {
             )}
             
             {/* CTA Button */}
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => router.push('/chat')}
-              className="mt-12 mx-auto px-8 py-4 rounded-lg bg-gradient-to-r from-[#32A9FF] to-[#BB40FF] text-white font-bold text-lg flex items-center space-x-2 group block"
-            >
-              <span>Launch Your Token</span>
-              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-            </motion.button>
+            {featuredAgent && (
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={() => openWarpcastCompose(featuredAgent.name)}
+                className="mt-12 mx-auto px-8 py-4 rounded-lg bg-gradient-to-r from-[#32A9FF] to-[#BB40FF] text-white font-bold text-lg flex items-center space-x-2 group block"
+              >
+                <span>Chat with {featuredAgent.name}</span>
+                <MessageCircle className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+              </motion.button>
+            )}
           </div>
         </section>
       </div>
