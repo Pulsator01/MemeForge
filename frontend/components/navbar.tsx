@@ -43,7 +43,7 @@ export function Navbar() {
             <div className="ml-10 flex items-center space-x-8">
               <NavLink href="/agents">Agents</NavLink>
               <NavLink href="/tokens">Tokens</NavLink>
-              <NavLink href="/chat">Chat</NavLink>
+              {/* <NavLink href="/chat">Chat</NavLink> */}
               {!walletAddress ? (
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -86,7 +86,7 @@ export function Navbar() {
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
             <MobileNavLink href="/agents">Agents</MobileNavLink>
             <MobileNavLink href="/tokens">Tokens</MobileNavLink>
-            <MobileNavLink href="/chat">Chat</MobileNavLink>
+            {/* <MobileNavLink href="/chat">Chat</MobileNavLink> */}
             {!walletAddress ? (
               <button
                 onClick={handleConnect}
