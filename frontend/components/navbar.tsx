@@ -34,16 +34,16 @@ export function Navbar() {
             <Link href="/" className="flex items-center space-x-2">
               <Rocket className="h-8 w-8 text-[#32A9FF]" />
               <span className="text-xl font-bold font-orbitron text-gradient">
-                MemeForge
+                Memegents
               </span>
             </Link>
           </div>
 
           <div className="hidden md:block">
             <div className="ml-10 flex items-center space-x-8">
-              <NavLink href="/launches">Launches</NavLink>
+              <NavLink href="/agents">Agents</NavLink>
               <NavLink href="/tokens">Tokens</NavLink>
-              <NavLink href="/dashboard">Dashboard</NavLink>
+              <NavLink href="/chat">Chat</NavLink>
               {!walletAddress ? (
                 <motion.button
                   whileHover={{ scale: 1.05 }}
@@ -84,9 +84,9 @@ export function Navbar() {
       {isOpen && (
         <div className="md:hidden glassmorphic">
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-            <MobileNavLink href="/launches">Launches</MobileNavLink>
+            <MobileNavLink href="/agents">Agents</MobileNavLink>
             <MobileNavLink href="/tokens">Tokens</MobileNavLink>
-            <MobileNavLink href="/dashboard">Dashboard</MobileNavLink>
+            <MobileNavLink href="/chat">Chat</MobileNavLink>
             {!walletAddress ? (
               <button
                 onClick={handleConnect}

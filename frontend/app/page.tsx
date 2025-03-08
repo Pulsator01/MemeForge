@@ -4,9 +4,13 @@ import { motion } from 'framer-motion'
 import { Rocket, TrendingUp, Users, ArrowRight } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { AgentCard, Agent } from '@/components/AgentCard'
+import { fetchAgents } from './utils/api'
 
 export default function Home() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 })
+  const [agents, setAgents] = useState<Agent[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
   useEffect(() => {
@@ -19,6 +23,22 @@ export default function Home() {
 
     window.addEventListener('mousemove', handleMouseMove)
     return () => window.removeEventListener('mousemove', handleMouseMove)
+  }, [])
+
+  useEffect(() => {
+    async function loadAgents() {
+      setIsLoading(true)
+      try {
+        const agentsData = await fetchAgents()
+        setAgents(agentsData)
+      } catch (error) {
+        console.error('Failed to load agents:', error)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadAgents()
   }, [])
 
   return (
@@ -67,7 +87,7 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             className="text-4xl md:text-6xl font-bold mb-6 font-orbitron text-gradient"
           >
-            Launch Your Next Memecoin
+            Memegents
           </motion.h1>
           <motion.p
             initial={{ opacity: 0, y: 20 }}
@@ -75,7 +95,7 @@ export default function Home() {
             transition={{ delay: 0.2 }}
             className="text-xl md:text-2xl text-gray-400 mb-8 max-w-2xl mx-auto"
           >
-            The most secure and advanced launchpad platform for the next generation of memecoins
+            Agentic Memecoins powered by AI
           </motion.p>
 
           {/* Stats Card */}
@@ -114,6 +134,43 @@ export default function Home() {
             <span>Launch Your Token</span>
             <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
           </motion.button>
+        </div>
+      </section>
+
+      {/* Agents Section */}
+      <section className="py-20 px-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl md:text-4xl font-bold font-orbitron text-gradient mb-4">
+              Available Agents
+            </h2>
+            <p className="text-xl text-gray-400 max-w-2xl mx-auto">
+              Explore our collection of AI-powered agents for your next memecoin
+            </p>
+          </div>
+
+          {isLoading ? (
+            <div className="flex justify-center items-center py-20">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#32A9FF]"></div>
+            </div>
+          ) : agents.length === 0 ? (
+            <div className="text-center py-10">
+              <p className="text-gray-400">No agents available at the moment. Please check back later.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {agents.map((agent, index) => (
+                <motion.div
+                  key={agent.name}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                >
+                  <AgentCard agent={agent} />
+                </motion.div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
     </main>

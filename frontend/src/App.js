@@ -4,7 +4,7 @@ import DeployToken from './components/DeployToken';
 function App() {
     return (
         <div className="App">
-            <h1>MemeForge</h1>
+            <h1>Memegents</h1>
             <DeployToken />
         </div>
     );

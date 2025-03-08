@@ -10,7 +10,7 @@ const orbitron = Orbitron({
 });
 
 export const metadata: Metadata = {
-  title: 'CryptoLaunch | Web3 Memecoin Launchpad',
+  title: 'Memegents | Agentic Memecoins @Sonic',
   description: 'Launch your next memecoin with style and security',
 };
 

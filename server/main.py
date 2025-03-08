@@ -6,7 +6,7 @@ from models import AgentConfig, AgentManager
 from src.multi_agent_manager import MultiAgentManager
 from fastapi.middleware.cors import CORSMiddleware
 from supabase import create_client, Client
-from typing import Optional, Dict, Any
+from typing import Optional
 import os
 import json
 

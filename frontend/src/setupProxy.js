@@ -1,10 +1,13 @@
 const { createProxyMiddleware } = require('http-proxy-middleware');
+require('dotenv').config();
+
+const API_URL = process.env.API_URL || 'https://memegents-102364148288.us-central1.run.app/';
 
 module.exports = function(app) {
     app.use(
         '/api',
         createProxyMiddleware({
-            target: 'http://localhost:5000',
+            target: API_URL,
             changeOrigin: true,
         })
     );

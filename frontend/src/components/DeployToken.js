@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 
+const API_URL = process.env.API_URL || 'https://memegents-102364148288.us-central1.run.app/';
+
 const DeployToken = () => {
     const [name, setName] = useState('');
     const [symbol, setSymbol] = useState('');
@@ -11,7 +13,7 @@ const DeployToken = () => {
 
     const handleDeploy = async () => {
         try {
-            const response = await axios.post('/api/deploy-token', { name, symbol, supply, deployer, salt });
+            const response = await axios.post(`${API_URL}api/deploy-token`, { name, symbol, supply, deployer, salt });
             setResult(response.data);
         } catch (error) {
             console.error(error);

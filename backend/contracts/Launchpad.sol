@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.28;
+pragma solidity ^0.8.20;
 
 import "./Memecoin.sol";
 import "./interfaces/IPositionManager.sol";
@@ -11,8 +11,8 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 contract Launchpad is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    address constant positionManagerAddress = 0xf807Aca27B1550Fe778fD4E7013BB57480b17fAc;
-    uint24 constant fee = 3000;
+    address public constant positionManagerAddress = 0xf807Aca27B1550Fe778fD4E7013BB57480b17fAc;
+    uint24 constant fee = 3000; // 0.3% fee tier for SpookySwap V3 pool
 
     IPositionManager public positionManager = IPositionManager(positionManagerAddress);
 
@@ -29,7 +29,6 @@ contract Launchpad is Ownable, ReentrancyGuard {
         uint256 liquidityPairedTokenAmount,
         uint160 initialSqrtPriceX96
     ) external nonReentrant returns (address) {
-        // Enhanced input validation
         require(bytes(name).length > 0, "Token name cannot be empty");
         require(bytes(symbol).length > 0, "Token symbol cannot be empty");
         require(initialSupply > 0, "Initial supply must be greater than 0");
@@ -45,24 +44,19 @@ contract Launchpad is Ownable, ReentrancyGuard {
             "Insufficient paired token balance"
         );
 
-        // Deploy memecoin and validate
         Memecoin token = new Memecoin(name, symbol, initialSupply);
         require(address(token) != pairedToken, "Cannot pair with itself");
         token.transferOwnership(msg.sender);
 
-        // Transfer paired tokens to the contract
         pairedTokenContract.safeTransferFrom(msg.sender, address(this), liquidityPairedTokenAmount);
 
-        // Approve position manager to spend tokens
-        token.safeApprove(address(positionManager), liquidityMemecoinAmount);
-        pairedTokenContract.safeApprove(address(positionManager), liquidityPairedTokenAmount);
+        SafeERC20.forceApprove(IERC20(address(token)), address(positionManager), liquidityMemecoinAmount);
+        SafeERC20.forceApprove(pairedTokenContract, address(positionManager), liquidityPairedTokenAmount);
 
-        // Determine token0 and token1 (lower address is token0)
         (address token0, address token1) = address(token) < pairedToken
             ? (address(token), pairedToken)
             : (pairedToken, address(token));
 
-        // Create and initialize pool
         address pool = positionManager.createAndInitializePoolIfNecessary(
             token0,
             token1,
@@ -70,7 +64,6 @@ contract Launchpad is Ownable, ReentrancyGuard {
             initialSqrtPriceX96
         );
 
-        // Mint liquidity position
         positionManager.mint(
             IPositionManager.MintParams({
                 token0: token0,
@@ -87,10 +80,9 @@ contract Launchpad is Ownable, ReentrancyGuard {
             })
         );
 
-        // Return remaining tokens to the user
         uint256 remainingMemecoin = token.balanceOf(address(this));
         if (remainingMemecoin > 0) {
-            token.safeTransfer(msg.sender, remainingMemecoin);
+            SafeERC20.safeTransfer(IERC20(address(token)), msg.sender, remainingMemecoin);
         }
         uint256 remainingPaired = pairedTokenContract.balanceOf(address(this));
         if (remainingPaired > 0) {
@@ -101,7 +93,6 @@ contract Launchpad is Ownable, ReentrancyGuard {
         return address(token);
     }
 
-    // Moved here for better ordering; secured with additional checks
     function withdrawToken(address tokenAddress, uint256 amount) external onlyOwner {
         require(tokenAddress != address(0), "Invalid token address");
         IERC20 tokenContract = IERC20(tokenAddress);

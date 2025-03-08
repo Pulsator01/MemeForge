@@ -2,7 +2,13 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Bot, User, Loader } from 'lucide-react'
+import { Send, Bot, User, Loader, ArrowLeft } from 'lucide-react'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { fetchAgentDetails } from '../utils/api'
+import { Agent } from '@/components/AgentCard'
+
+// Get API URL from environment variable
+const API_URL = process.env.API_URL || 'https://memegents-102364148288.us-central1.run.app/';
 
 interface Message {
   id: string
@@ -11,17 +17,47 @@ interface Message {
 }
 
 export default function ChatPage() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      content: "Hello! I'm here to help you launch your token. What would you like to know?",
-      type: 'ai'
-    }
-  ])
+  const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [agent, setAgent] = useState<Agent | null>(null)
+  const [isLoadingAgent, setIsLoadingAgent] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const router = useRouter()
+  const searchParams = useSearchParams()
+  const agentName = searchParams.get('agent')
+
+  useEffect(() => {
+    async function loadAgent() {
+      if (!agentName) {
+        setIsLoadingAgent(false)
+        return
+      }
+
+      try {
+        const agentData = await fetchAgentDetails(agentName)
+        setAgent(agentData)
+        
+        if (agentData) {
+          // Add initial message from the agent
+          setMessages([
+            {
+              id: '1',
+              content: `Hello! I'm ${agentData.name}. ${agentData.bio[0].split(',')[1] || 'How can I help you today?'}`,
+              type: 'ai'
+            }
+          ])
+        }
+      } catch (error) {
+        console.error('Failed to load agent:', error)
+      } finally {
+        setIsLoadingAgent(false)
+      }
+    }
+
+    loadAgent()
+  }, [agentName])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -45,16 +81,42 @@ export default function ChatPage() {
     setInput('')
     setIsLoading(true)
 
-    // Simulate AI response
-    setTimeout(() => {
+    try {
+      // Call the API
+      const response = await fetch(`${API_URL}api/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          message: input,
+          agent: agent?.name || 'Memegents'
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to get response from AI');
+      }
+
+      const data = await response.json();
+      
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
-        content: "I'm processing your request. This is a simulated response for demonstration purposes.",
+        content: data.response || "I'm sorry, I couldn't process your request at this time.",
         type: 'ai'
       }
-      setMessages(prev => [...prev, aiResponse])
-      setIsLoading(false)
-    }, 2000)
+      setMessages(prev => [...prev, aiResponse]);
+    } catch (error) {
+      console.error('Error:', error);
+      const errorResponse: Message = {
+        id: (Date.now() + 1).toString(),
+        content: "I'm sorry, there was an error processing your request. Please try again later.",
+        type: 'ai'
+      }
+      setMessages(prev => [...prev, errorResponse]);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -64,12 +126,30 @@ export default function ChatPage() {
     }
   }
 
+  if (isLoadingAgent) {
+    return (
+      <div className="min-h-screen flex justify-center items-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#32A9FF]"></div>
+      </div>
+    )
+  }
+
   return (
     <main className="min-h-screen pt-16">
       <div className="max-w-4xl mx-auto h-[calc(100vh-4rem)] flex flex-col">
         {/* Chat Header */}
         <div className="glassmorphic p-4 rounded-t-lg">
-          <h1 className="text-xl font-orbitron text-gradient text-center">Token Launch Assistant</h1>
+          <div className="flex items-center">
+            <button
+              onClick={() => router.push('/')}
+              className="mr-4 text-gray-400 hover:text-white transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <h1 className="text-xl font-orbitron text-gradient text-center flex-1">
+              {agent ? `Chat with ${agent.name}` : 'Memegents Chat Assistant'}
+            </h1>
+          </div>
         </div>
 
         {/* Messages Container */}
@@ -101,7 +181,7 @@ export default function ChatPage() {
                     ? 'bg-gradient-to-r from-[#32A9FF]/10 to-transparent border-[#32A9FF]/20' 
                     : 'bg-gradient-to-r from-[#BB40FF]/10 to-transparent border-[#BB40FF]/20'
                 }`}>
-                  <p className="text-sm md:text-base">{message.content}</p>
+                  <p className="text-sm md:text-base whitespace-pre-wrap">{message.content}</p>
                 </div>
               </motion.div>
             ))}
@@ -135,7 +215,7 @@ export default function ChatPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Type your message..."
+                placeholder={`Message ${agent?.name || 'Memegents'}...`}
                 className="w-full bg-black/20 text-white placeholder-gray-400 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#32A9FF]/50 resize-none"
                 rows={1}
                 style={{
