@@ -41,8 +41,8 @@ export function Navbar() {
 
           <div className="hidden md:block">
             <div className="ml-10 flex items-center space-x-8">
-              <NavLink href="/agents">Agents</NavLink>
-              <NavLink href="/tokens">Tokens</NavLink>
+              <NavLink href="/agents">All Memegents</NavLink>
+              {/* <NavLink href="/tokens">Mem</NavLink> */}
               {/* <NavLink href="/chat">Chat</NavLink> */}
               {!walletAddress ? (
                 <motion.button
@@ -84,8 +84,8 @@ export function Navbar() {
       {isOpen && (
         <div className="md:hidden glassmorphic">
           <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
-            <MobileNavLink href="/agents">Agents</MobileNavLink>
-            <MobileNavLink href="/tokens">Tokens</MobileNavLink>
+            <MobileNavLink href="/agents">All Memegents</MobileNavLink>
+            {/* <MobileNavLink href="/tokens">Tokens</MobileNavLink> */}
             {/* <MobileNavLink href="/chat">Chat</MobileNavLink> */}
             {!walletAddress ? (
               <button

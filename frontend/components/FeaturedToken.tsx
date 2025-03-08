@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Gift } from 'lucide-react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Agent } from '@/components/AgentCard';
 
 interface FeaturedTokenProps {
@@ -55,42 +56,44 @@ export function FeaturedToken({ agent }: FeaturedTokenProps) {
         <h2 className="text-2xl font-bold font-orbitron text-gradient">RANDOMLY FEATURED TOKEN</h2>
       </div>
       
-      <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden">
-        <div className="flex flex-col md:flex-row">
-          {/* Token Image */}
-          <div className="w-full md:w-56 h-56 bg-indigo-600 relative overflow-hidden">
-            <div className="absolute inset-0 flex items-center justify-center text-white text-4xl font-bold">
-              {agent.name.substring(0, 1)}
-            </div>
-          </div>
-          
-          {/* Token Info */}
-          <div className="p-6 flex flex-col justify-between flex-grow">
-            <div>
-              <div className="flex items-center mb-3">
-                <h3 className="text-2xl font-bold font-orbitron">{agent.name}</h3>
-                <div className="ml-3 flex items-center">
-                  <div className="w-5 h-5 rounded-full bg-gray-700"></div>
-                  <span className="ml-2 text-gray-400">@tonty.eth</span>
-                </div>
-              </div>
-              
-              <div className="text-gray-400 mb-6">
-                {agent.traits.slice(0, 3).join(', ')}
-              </div>
-              
-              <div className="mb-6">
-                <p className="text-gray-300 line-clamp-2">{agent.bio[0]}</p>
+      <Link href={`/agents/${encodeURIComponent(agent.name)}`}>
+        <div className="bg-white/5 border border-white/10 rounded-xl overflow-hidden cursor-pointer">
+          <div className="flex flex-col md:flex-row">
+            {/* Token Image */}
+            <div className="w-full md:w-56 h-56 bg-indigo-600 relative overflow-hidden">
+              <div className="absolute inset-0 flex items-center justify-center text-white text-4xl font-bold">
+                {agent.name.substring(0, 1)}
               </div>
             </div>
             
-            <div>
-              <div className="text-gray-400 mb-1">REWARDS {stakers > 0 ? `(${stakers} STAKER${stakers > 1 ? 'S' : ''})` : ''}</div>
-              <div className="text-3xl font-mono font-bold">{formatNumber(value)}</div>
+            {/* Token Info */}
+            <div className="p-6 flex flex-col justify-between flex-grow">
+              <div>
+                <div className="flex items-center mb-3">
+                  <h3 className="text-2xl font-bold font-orbitron">{agent.name}</h3>
+                  <div className="ml-3 flex items-center">
+                    {/* <div className="w-5 h-5 rounded-full bg-gray-700"></div> */}
+                    <span className="ml-2 text-gray-400">@tonty.eth</span>
+                  </div>
+                </div>
+                
+                <div className="text-gray-400 mb-6">
+                  {agent.traits.slice(0, 3).join(', ')}
+                </div>
+                
+                <div className="mb-6">
+                  <p className="text-gray-300 line-clamp-2">{agent.bio[0]}</p>
+                </div>
+              </div>
+              
+              <div>
+                <div className="text-gray-400 mb-1">REWARDS {stakers > 0 ? `(${stakers} STAKER${stakers > 1 ? 'S' : ''})` : ''}</div>
+                <div className="text-3xl font-mono font-bold">{formatNumber(value)}</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </Link>
     </motion.div>
   );
 } 
