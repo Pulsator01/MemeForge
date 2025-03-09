@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, Plus, Loader2 } from 'lucide-react';
+import { X, Plus, Loader2, ChevronDown, ChevronUp, RefreshCw } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { generateTokenParameters } from '@/app/utils/aiAgent';
+import { useLaunchpad } from '@/hooks/useLaunchpad';
 
 interface CreateTokenFormProps {
   onSuccess?: () => void;
@@ -13,11 +15,33 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   
-  // Form state
+  // Memegent form state
   const [name, setName] = useState('');
   const [bio, setBio] = useState('');
   const [traits, setTraits] = useState<string[]>(['']);
+
+  // Memecoin form state
+  const [symbol, setSymbol] = useState('');
+  const [initialSupply, setInitialSupply] = useState('');
+  const [pairedToken, setPairedToken] = useState('');
+  const [liquidityMemecoinAmount, setLiquidityMemecoinAmount] = useState('');
+  const [liquidityPairedTokenAmount, setLiquidityPairedTokenAmount] = useState('');
   
+  // UI state
+  const [showTokenSection, setShowTokenSection] = useState(false);
+  const [isAILoading, setIsAILoading] = useState(false);
+  const [aiError, setAIError] = useState<string | null>(null);
+  const [tokenDeployed, setTokenDeployed] = useState(false);
+  const [tokenAddress, setTokenAddress] = useState<string | null>(null);
+  
+  // Launchpad hook
+  const { launchToken, loading: tokenLoading, error: tokenError, result: tokenResult } = useLaunchpad();
+  
+  // Reset error messages when form fields change
+  useEffect(() => {
+    setAIError(null);
+  }, [name]);
+
   // Add a new trait input field
   const addTrait = () => {
     setTraits([...traits, '']);
@@ -37,21 +61,47 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
     setTraits(newTraits);
   };
   
+  // Generate AI parameters for token
+  const handleGenerateParams = async () => {
+    if (!name.trim()) {
+      setAIError('Please enter a token name to generate parameters');
+      return;
+    }
+    
+    setIsAILoading(true);
+    setAIError(null);
+    
+    try {
+      const params = await generateTokenParameters(name);
+      
+      // Update form with AI-generated values
+      setSymbol(params.symbol);
+      setInitialSupply(params.initialSupply);
+      setPairedToken(params.pairedToken);
+      setLiquidityMemecoinAmount(params.liquidityMemecoinAmount);
+      setLiquidityPairedTokenAmount(params.liquidityPairedTokenAmount);
+    } catch (error: any) {
+      setAIError(error.message || 'Failed to generate parameters');
+    } finally {
+      setIsAILoading(false);
+    }
+  };
+  
   // Handle form submission
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
     
-    // Validate form
+    // Validate memegent form
     if (!name.trim()) {
-      setError('Token name is required');
+      setError('Memegent name is required');
       setIsLoading(false);
       return;
     }
     
     if (!bio.trim()) {
-      setError('Token description is required');
+      setError('Memegent description is required');
       setIsLoading(false);
       return;
     }
@@ -64,8 +114,17 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
       return;
     }
     
+    // Validate token section if expanded
+    if (showTokenSection) {
+      if (!symbol || !initialSupply || !pairedToken || !liquidityMemecoinAmount || !liquidityPairedTokenAmount) {
+        setError('All token fields are required');
+        setIsLoading(false);
+        return;
+      }
+    }
+    
     try {
-      // Prepare data for API
+      // Step 1: Create the memegent
       const agentData = {
         name,
         bio: bio.split('\n').filter(line => line.trim() !== ''),
@@ -97,7 +156,26 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
       
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to create token');
+        throw new Error(errorData.detail || 'Failed to create memegent');
+      }
+
+      // Step 2: Deploy the token if token section is active
+      if (showTokenSection) {
+        const result = await launchToken({
+          name,
+          symbol,
+          initialSupply,
+          pairedToken,
+          liquidityMemecoinAmount,
+          liquidityPairedTokenAmount
+        });
+        
+        if (result.success && result.tokenAddress) {
+          setTokenDeployed(true);
+          setTokenAddress(result.tokenAddress);
+        } else if (result.error) {
+          throw new Error(`Token deployment failed: ${result.error}`);
+        }
       }
       
       // Handle success
@@ -109,7 +187,7 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
       // Redirect to the new agent page after a delay
       setTimeout(() => {
         router.push(`/agents/${encodeURIComponent(name)}`);
-      }, 2000);
+      }, 3000);
       
     } catch (err) {
       console.error('Error creating token:', err);
@@ -125,16 +203,22 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
       
       {success ? (
         <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4 mb-6">
-          <p className="text-green-400">Your token has been created successfully! Redirecting...</p>
+          <p className="text-green-400">
+            Your memegent has been created successfully!
+            {tokenDeployed && tokenAddress && (
+              <span> Token deployed at {tokenAddress}</span>
+            )}
+            <br />Redirecting...
+          </p>
         </div>
-      ) : error ? (
+      ) : error || aiError || tokenError ? (
         <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-4 mb-6">
-          <p className="text-red-400">{error}</p>
+          <p className="text-red-400">{error || aiError || tokenError}</p>
         </div>
       ) : null}
       
       <form onSubmit={handleSubmit}>
-        {/* Token Name */}
+        {/* Memegent Section */}
         <div className="mb-6">
           <label htmlFor="name" className="block text-gray-300 mb-2">
             Memegent Name <span className="text-red-400">*</span>
@@ -150,7 +234,6 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
           />
         </div>
         
-        {/* Token Bio/Description */}
         <div className="mb-6">
           <label htmlFor="bio" className="block text-gray-300 mb-2">
             Memegent Description <span className="text-red-400">*</span>
@@ -168,7 +251,6 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
           </p>
         </div>
         
-        {/* Token Traits */}
         <div className="mb-8">
           <label className="block text-gray-300 mb-2">
             Memegent Traits <span className="text-red-400">*</span>
@@ -209,21 +291,146 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
           </button>
         </div>
         
+        {/* Token Section Toggle */}
+        <div className="mb-6 border-t border-gray-800 pt-6">
+          <button
+            type="button"
+            onClick={() => setShowTokenSection(!showTokenSection)}
+            className="flex items-center justify-between w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg hover:bg-white/10 transition-colors"
+          >
+            <span className="font-semibold">Memecoin Parameters</span>
+            {showTokenSection ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+          </button>
+        </div>
+        
+        {/* Token Section (Expandable) */}
+        {showTokenSection && (
+          <div className="pl-4 border-l-2 border-[#32A9FF]/30 mb-8 space-y-6">
+            <div className="mb-0">
+              <div className="flex justify-between items-center mb-2">
+                <label htmlFor="token-name" className="block text-gray-300">
+                  Token Name
+                </label>
+                <button
+                  type="button"
+                  onClick={handleGenerateParams}
+                  className="text-xs px-2 py-1 bg-[#32A9FF]/20 hover:bg-[#32A9FF]/30 border border-[#32A9FF]/50 rounded-lg transition-colors flex items-center"
+                  disabled={isAILoading || !name.trim() || isLoading}
+                >
+                  {isAILoading ? (
+                    <Loader2 size={12} className="animate-spin mr-1" />
+                  ) : (
+                    <RefreshCw size={12} className="mr-1" />
+                  )}
+                  <span>Generate with AI</span>
+                </button>
+              </div>
+              <input
+                id="token-name"
+                type="text"
+                value={name}
+                disabled
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF] opacity-70"
+              />
+              <p className="text-gray-400 text-xs mt-1">
+                Same as your memegent name
+              </p>
+            </div>
+            
+            <div>
+              <label htmlFor="symbol" className="block text-gray-300 mb-2">
+                Token Symbol <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="symbol"
+                type="text"
+                value={symbol}
+                onChange={(e) => setSymbol(e.target.value)}
+                placeholder="e.g. DOGE"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
+                disabled={isLoading || isAILoading}
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="initialSupply" className="block text-gray-300 mb-2">
+                Initial Supply <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="initialSupply"
+                type="text"
+                value={initialSupply}
+                onChange={(e) => setInitialSupply(e.target.value)}
+                placeholder="e.g. 1000000"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
+                disabled={isLoading || isAILoading}
+              />
+            </div>
+            
+            <div>
+              <label htmlFor="pairedToken" className="block text-gray-300 mb-2">
+                Paired Token Address <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="pairedToken"
+                type="text"
+                value={pairedToken}
+                onChange={(e) => setPairedToken(e.target.value)}
+                placeholder="e.g. 0x..."
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
+                disabled={isLoading || isAILoading}
+              />
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label htmlFor="liquidityMemecoinAmount" className="block text-gray-300 mb-2">
+                  Liquidity Memecoin Amount <span className="text-red-400">*</span>
+                </label>
+                <input
+                  id="liquidityMemecoinAmount"
+                  type="text"
+                  value={liquidityMemecoinAmount}
+                  onChange={(e) => setLiquidityMemecoinAmount(e.target.value)}
+                  placeholder="e.g. 500000"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
+                  disabled={isLoading || isAILoading}
+                />
+              </div>
+              
+              <div>
+                <label htmlFor="liquidityPairedTokenAmount" className="block text-gray-300 mb-2">
+                  Liquidity Paired Token Amount <span className="text-red-400">*</span>
+                </label>
+                <input
+                  id="liquidityPairedTokenAmount"
+                  type="text"
+                  value={liquidityPairedTokenAmount}
+                  onChange={(e) => setLiquidityPairedTokenAmount(e.target.value)}
+                  placeholder="e.g. 10"
+                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
+                  disabled={isLoading || isAILoading}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+        
         {/* Submit Button */}
         <motion.button
           type="submit"
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           className="w-full px-6 py-4 rounded-lg bg-gradient-to-r from-[#32A9FF] to-[#BB40FF] text-white font-bold text-lg flex items-center justify-center"
-          disabled={isLoading}
+          disabled={isLoading || isAILoading || tokenLoading}
         >
-          {isLoading ? (
+          {isLoading || tokenLoading ? (
             <>
               <Loader2 size={20} className="mr-2 animate-spin" />
-              Creating Memegent...
+              {showTokenSection ? 'Creating Memegent & Deploying Token...' : 'Creating Memegent...'}
             </>
           ) : (
-            'Create Memegent'
+            showTokenSection ? 'Create Memegent & Deploy Token' : 'Create Memegent'
           )}
         </motion.button>
       </form>
