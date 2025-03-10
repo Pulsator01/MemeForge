@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Bot, User, Loader, ArrowLeft } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -17,6 +17,14 @@ interface Message {
 }
 
 export default function ChatPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ActualChatPage />
+    </Suspense>
+  );
+}
+
+function ActualChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
