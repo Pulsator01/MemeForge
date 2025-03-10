@@ -4,6 +4,7 @@ import { X, Plus, Loader2, ChevronDown, ChevronUp, RefreshCw } from 'lucide-reac
 import { useRouter } from 'next/navigation';
 import { generateTokenParameters } from '@/app/utils/aiAgent';
 import { useLaunchpad } from '@/hooks/useLaunchpad';
+import { getMemecoinAddress, saveMemecoinAddress } from '@/app/utils/tokenUtils';
 
 interface CreateTokenFormProps {
   onSuccess?: () => void;
@@ -23,7 +24,6 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
   // Memecoin form state
   const [symbol, setSymbol] = useState('');
   const [initialSupply, setInitialSupply] = useState('');
-  const [pairedToken, setPairedToken] = useState('');
   const [liquidityMemecoinAmount, setLiquidityMemecoinAmount] = useState('');
   const [liquidityPairedTokenAmount, setLiquidityPairedTokenAmount] = useState('');
   
@@ -41,6 +41,15 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
   useEffect(() => {
     setAIError(null);
   }, [name]);
+
+  // Get stored token address on mount
+  useEffect(() => {
+    const storedAddress = getMemecoinAddress();
+    if (storedAddress) {
+      setTokenAddress(storedAddress);
+      setTokenDeployed(true);
+    }
+  }, []);
 
   // Add a new trait input field
   const addTrait = () => {
@@ -77,7 +86,6 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
       // Update form with AI-generated values
       setSymbol(params.symbol);
       setInitialSupply(params.initialSupply);
-      setPairedToken(params.pairedToken);
       setLiquidityMemecoinAmount(params.liquidityMemecoinAmount);
       setLiquidityPairedTokenAmount(params.liquidityPairedTokenAmount);
     } catch (error: any) {
@@ -116,7 +124,7 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
     
     // Validate token section if expanded
     if (showTokenSection) {
-      if (!symbol || !initialSupply || !pairedToken || !liquidityMemecoinAmount || !liquidityPairedTokenAmount) {
+      if (!symbol || !initialSupply || !liquidityMemecoinAmount || !liquidityPairedTokenAmount) {
         setError('All token fields are required');
         setIsLoading(false);
         return;
@@ -165,7 +173,7 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
           name,
           symbol,
           initialSupply,
-          pairedToken,
+          pairedToken: "0x039e2fB66102314Ce7b64Ce5Ce3E5183bc94aD38",
           liquidityMemecoinAmount,
           liquidityPairedTokenAmount
         });
@@ -173,6 +181,10 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
         if (result.success && result.tokenAddress) {
           setTokenDeployed(true);
           setTokenAddress(result.tokenAddress);
+          
+          // Display the address prominently
+          console.log('⭐ Token deployed successfully at:', result.tokenAddress);
+          saveMemecoinAddress(result.tokenAddress);
         } else if (result.error) {
           throw new Error(`Token deployment failed: ${result.error}`);
         }
@@ -205,11 +217,19 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
         <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4 mb-6">
           <p className="text-green-400">
             Your memegent has been created successfully!
-            {tokenDeployed && tokenAddress && (
-              <span> Token deployed at {tokenAddress}</span>
-            )}
-            <br />Redirecting...
           </p>
+          {tokenDeployed && tokenAddress && (
+            <div className="mt-2">
+              <p className="text-green-400">Token deployed at:</p>
+              <code className="block mt-1 p-2 bg-black/30 rounded border border-green-500/30 text-green-300 font-mono break-all">
+                {tokenAddress}
+              </code>
+              <p className="mt-2 text-sm text-green-400/70">
+                This address has been saved and will be used for future interactions.
+              </p>
+            </div>
+          )}
+          <p className="mt-2 text-green-400">Redirecting...</p>
         </div>
       ) : error || aiError || tokenError ? (
         <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-4 mb-6">
@@ -362,21 +382,6 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
                 value={initialSupply}
                 onChange={(e) => setInitialSupply(e.target.value)}
                 placeholder="e.g. 1000000"
-                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
-                disabled={isLoading || isAILoading}
-              />
-            </div>
-            
-            <div>
-              <label htmlFor="pairedToken" className="block text-gray-300 mb-2">
-                Paired Token Address <span className="text-red-400">*</span>
-              </label>
-              <input
-                id="pairedToken"
-                type="text"
-                value={pairedToken}
-                onChange={(e) => setPairedToken(e.target.value)}
-                placeholder="e.g. 0x..."
                 className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
                 disabled={isLoading || isAILoading}
               />

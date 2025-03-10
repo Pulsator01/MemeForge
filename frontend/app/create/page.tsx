@@ -14,7 +14,8 @@ export default function CreateTokenPage() {
   const [name, setName] = useState('')
   const [symbol, setSymbol] = useState('')
   const [initialSupply, setInitialSupply] = useState('')
-  const [pairedToken, setPairedToken] = useState('')
+  // Hard-coded paired token address
+  const pairedToken = "0x039e2fB66102314Ce7b64Ce5Ce3E5183bc94aD38"
   const [liquidityMemecoinAmount, setLiquidityMemecoinAmount] = useState('')
   const [liquidityPairedTokenAmount, setLiquidityPairedTokenAmount] = useState('')
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
@@ -23,13 +24,13 @@ export default function CreateTokenPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Validate form fields
-    if (!name.trim() || !symbol.trim() || !initialSupply || !pairedToken || !liquidityMemecoinAmount || !liquidityPairedTokenAmount) {
+    // Validate form fields (update validation to exclude pairedToken)
+    if (!name.trim() || !symbol.trim() || !initialSupply || !liquidityMemecoinAmount || !liquidityPairedTokenAmount) {
       setAIError('All fields are required')
       return
     }
     
-    // Call contract to launch token
+    // Call contract to launch token (using hard-coded pairedToken)
     const result = await launchToken({
       name,
       symbol,
@@ -47,7 +48,6 @@ export default function CreateTokenPage() {
         setName('')
         setSymbol('')
         setInitialSupply('')
-        setPairedToken('')
         setLiquidityMemecoinAmount('')
         setLiquidityPairedTokenAmount('')
         setSuccessMessage(null)

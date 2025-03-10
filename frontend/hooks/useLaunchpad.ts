@@ -7,7 +7,10 @@ import LaunchpadArtifact from '@/app/abis/Launchpad.json';
 const LaunchpadABI = LaunchpadArtifact.abi;
 
 // Contract address (should be loaded from config in production)
-const LAUNCHPAD_ADDRESS = "0xe76a660c63F2090798bF1240A21187514E8e91D4"; // From backend/.env
+const LAUNCHPAD_ADDRESS = "0xe76a660c63F2090798bF1240A21187514E8e91D4";
+
+// Storage key for localStorage
+const MEMECOIN_ADDRESS_KEY = 'memecoin_address';
 
 // ERC20 ABI for token approval
 const ERC20_ABI = [
@@ -36,6 +39,16 @@ export function useLaunchpad() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<LaunchpadResult | null>(null);
 
+  // Helper to save the memecoin address to localStorage
+  const saveMemecoinAddress = (address: string) => {
+    localStorage.setItem(MEMECOIN_ADDRESS_KEY, address);
+  };
+
+  // Helper to get the stored memecoin address
+  const getMemecoinAddress = (): string | null => {
+    return localStorage.getItem(MEMECOIN_ADDRESS_KEY);
+  };
+
   const launchToken = useCallback(async (formData: LaunchpadFormData): Promise<LaunchpadResult> => {
     setLoading(true);
     setError(null);
@@ -59,18 +72,21 @@ export function useLaunchpad() {
       // Create contract instances
       const launchpadContract = new ethers.Contract(
         LAUNCHPAD_ADDRESS, 
-        LaunchpadABI, // Use just the ABI array
+        LaunchpadABI, 
         signer
       );
       const pairedTokenContract = new ethers.Contract(formData.pairedToken, ERC20_ABI, signer);
 
       // Step 1: Approve token transfer
-      const liquidityPairedTokenAmount = ethers.parseUnits(formData.liquidityPairedTokenAmount, 18); // Assumes 18 decimals
-      const currentAllowance = await pairedTokenContract.allowance(await signer.getAddress(), LAUNCHPAD_ADDRESS);
-      
-      if (currentAllowance < liquidityPairedTokenAmount) {
+      const liquidityPairedTokenAmount = ethers.parseUnits(formData.liquidityPairedTokenAmount, 18);
+
+      // Just do the approval without checking allowance first
+      try {
         const approveTx = await pairedTokenContract.approve(LAUNCHPAD_ADDRESS, liquidityPairedTokenAmount);
         await approveTx.wait();
+      } catch (approveError) {
+        console.error("Token approval failed:", approveError);
+        throw new Error("Failed to approve token transfer. The token might not be a standard ERC20 token.");
       }
 
       // Step 2: Launch token
@@ -102,6 +118,12 @@ export function useLaunchpad() {
 
       const tokenAddress = event ? event.args.tokenAddress : undefined;
 
+      // Log and store the token address
+      if (tokenAddress) {
+        console.log('💰 Memecoin deployed at address:', tokenAddress);
+        saveMemecoinAddress(tokenAddress);
+      }
+
       const result = {
         success: true,
         tokenAddress,
@@ -127,6 +149,8 @@ export function useLaunchpad() {
     launchToken,
     loading,
     error,
-    result
+    result,
+    getMemecoinAddress,  // Export the utility function to get the address
+    saveMemecoinAddress  // Export the utility function to save an address manually
   };
 } 
