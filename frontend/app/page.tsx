@@ -61,13 +61,6 @@ export default function Home() {
   return (
     <main className="container mx-auto px-4 py-12">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold mb-8">MemeForge Dashboard</h1>
-        
-        {/* Add the token interactions component */}
-        <div className="mt-8">
-          <TokenInteractions />
-        </div>
-        
         {/* Tokens Section */}
         <section className="py-12 px-4 min-h-screen relative z-10">
           <div className="max-w-7xl mx-auto">

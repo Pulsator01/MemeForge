@@ -25,6 +25,11 @@ interface LaunchpadFormData {
   pairedToken: string;
   liquidityMemecoinAmount: string;
   liquidityPairedTokenAmount: string;
+  // V3 params (optional for now, use defaults)
+  fee?: number; // e.g. 3000 for 0.3%
+  tickLower?: number; // e.g. -887272
+  tickUpper?: number; // e.g. 887272
+  deadline?: number; // unix timestamp
 }
 
 interface LaunchpadResult {
@@ -32,6 +37,10 @@ interface LaunchpadResult {
   tokenAddress?: string;
   error?: string;
   txHash?: string;
+  lpTokenId?: string;
+  lpLiquidity?: string;
+  lpAmount0?: string;
+  lpAmount1?: string;
 }
 
 export function useLaunchpad() {
@@ -93,6 +102,13 @@ export function useLaunchpad() {
       const initialSupply = ethers.parseUnits(formData.initialSupply, 18); // Assumes 18 decimals
       const liquidityMemecoinAmount = ethers.parseUnits(formData.liquidityMemecoinAmount, 18); // Assumes 18 decimals
 
+      // Defaults for V3 params
+      const fee = formData.fee ?? 3000;
+      const tickLower = formData.tickLower ?? -887272;
+      const tickUpper = formData.tickUpper ?? 887272;
+      const deadline = formData.deadline ?? (Math.floor(Date.now() / 1000) + 600);
+
+      // The contract currently does not accept these extra params, but structure for future extension
       const tx = await launchpadContract.launchToken(
         formData.name,
         formData.symbol,
@@ -100,13 +116,14 @@ export function useLaunchpad() {
         formData.pairedToken,
         liquidityMemecoinAmount,
         liquidityPairedTokenAmount
+        // fee, tickLower, tickUpper, deadline // for future
       );
 
       // Wait for transaction confirmation
       const receipt = await tx.wait();
-      
+
       // Find TokenLaunched event to get the token address
-      const event = receipt.logs
+      const tokenLaunchedEvent = receipt.logs
         .map((log: any) => {
           try {
             return launchpadContract.interface.parseLog(log);
@@ -116,18 +133,30 @@ export function useLaunchpad() {
         })
         .find((event: any) => event && event.name === 'TokenLaunched');
 
-      const tokenAddress = event ? event.args.tokenAddress : undefined;
-
-      // Log and store the token address
+      const tokenAddress = tokenLaunchedEvent ? tokenLaunchedEvent.args.tokenAddress : undefined;
       if (tokenAddress) {
-        console.log('💰 Memecoin deployed at address:', tokenAddress);
         saveMemecoinAddress(tokenAddress);
       }
+
+      // Find LiquidityProvided event to get LP NFT info
+      const liquidityEvent = receipt.logs
+        .map((log: any) => {
+          try {
+            return launchpadContract.interface.parseLog(log);
+          } catch (e) {
+            return null;
+          }
+        })
+        .find((event: any) => event && event.name === 'LiquidityProvided');
 
       const result = {
         success: true,
         tokenAddress,
         txHash: receipt.hash,
+        lpTokenId: liquidityEvent ? liquidityEvent.args.tokenId.toString() : undefined,
+        lpLiquidity: liquidityEvent ? liquidityEvent.args.liquidity.toString() : undefined,
+        lpAmount0: liquidityEvent ? liquidityEvent.args.amount0.toString() : undefined,
+        lpAmount1: liquidityEvent ? liquidityEvent.args.amount1.toString() : undefined,
       };
 
       setResult(result);
@@ -137,7 +166,6 @@ export function useLaunchpad() {
       const errorMessage = err.message || "Unknown error occurred";
       setError(errorMessage);
       setLoading(false);
-      
       return {
         success: false,
         error: errorMessage

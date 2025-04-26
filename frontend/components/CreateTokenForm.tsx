@@ -37,6 +37,13 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
   // Launchpad hook
   const { launchToken, loading: tokenLoading, error: tokenError, result: tokenResult } = useLaunchpad();
   
+  // Advanced V3 params
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [fee, setFee] = useState(3000);
+  const [tickLower, setTickLower] = useState(-887272);
+  const [tickUpper, setTickUpper] = useState(887272);
+  const [deadline, setDeadline] = useState<number | undefined>(undefined);
+  
   // Reset error messages when form fields change
   useEffect(() => {
     setAIError(null);
@@ -175,7 +182,11 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
           initialSupply,
           pairedToken: "0x039e2fB66102314Ce7b64Ce5Ce3E5183bc94aD38",
           liquidityMemecoinAmount,
-          liquidityPairedTokenAmount
+          liquidityPairedTokenAmount,
+          fee,
+          tickLower,
+          tickUpper,
+          deadline
         });
         
         if (result.success && result.tokenAddress) {
@@ -218,15 +229,15 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
           <p className="text-green-400">
             Your memegent has been created successfully!
           </p>
-          {tokenDeployed && tokenAddress && (
-            <div className="mt-2">
-              <p className="text-green-400">Token deployed at:</p>
-              <code className="block mt-1 p-2 bg-black/30 rounded border border-green-500/30 text-green-300 font-mono break-all">
-                {tokenAddress}
-              </code>
-              <p className="mt-2 text-sm text-green-400/70">
-                This address has been saved and will be used for future interactions.
-              </p>
+          {tokenDeployed && tokenAddress && tokenResult && tokenResult.lpTokenId && (
+            <div className="mt-4 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
+              <h3 className="text-blue-300 font-bold mb-2">Liquidity Position NFT</h3>
+              <div className="text-blue-200 text-sm">
+                <div><b>Token ID:</b> {tokenResult.lpTokenId}</div>
+                <div><b>Liquidity:</b> {tokenResult.lpLiquidity}</div>
+                <div><b>Amount0:</b> {tokenResult.lpAmount0}</div>
+                <div><b>Amount1:</b> {tokenResult.lpAmount1}</div>
+              </div>
             </div>
           )}
           <p className="mt-2 text-green-400">Redirecting...</p>
@@ -402,7 +413,6 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
                   disabled={isLoading || isAILoading}
                 />
               </div>
-              
               <div>
                 <label htmlFor="liquidityPairedTokenAmount" className="block text-gray-300 mb-2">
                   Liquidity Paired Token Amount <span className="text-red-400">*</span>
@@ -418,6 +428,78 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
                 />
               </div>
             </div>
+            {/* Advanced fields toggle and section */}
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="mt-4 text-xs text-[#32A9FF] hover:text-[#5BBDFF] underline"
+            >
+              {showAdvanced ? 'Hide Advanced' : 'Show Advanced'}
+            </button>
+            {showAdvanced && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                <div>
+                  <label htmlFor="fee" className="block text-gray-300 mb-2">
+                    Fee Tier (bps)
+                  </label>
+                  <input
+                    id="fee"
+                    type="number"
+                    value={fee}
+                    onChange={e => setFee(Number(e.target.value))}
+                    min={100}
+                    max={10000}
+                    step={1}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
+                    disabled={isLoading || isAILoading}
+                  />
+                  <p className="text-gray-400 text-xs mt-1">Default: 3000 (0.3%)</p>
+                </div>
+                <div>
+                  <label htmlFor="deadline" className="block text-gray-300 mb-2">
+                    Deadline (unix timestamp)
+                  </label>
+                  <input
+                    id="deadline"
+                    type="number"
+                    value={deadline ?? ''}
+                    onChange={e => setDeadline(Number(e.target.value) || undefined)}
+                    placeholder="Default: now + 600s"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
+                    disabled={isLoading || isAILoading}
+                  />
+                  <p className="text-gray-400 text-xs mt-1">Default: 10 minutes from now</p>
+                </div>
+                <div>
+                  <label htmlFor="tickLower" className="block text-gray-300 mb-2">
+                    Tick Lower
+                  </label>
+                  <input
+                    id="tickLower"
+                    type="number"
+                    value={tickLower}
+                    onChange={e => setTickLower(Number(e.target.value))}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
+                    disabled={isLoading || isAILoading}
+                  />
+                  <p className="text-gray-400 text-xs mt-1">Default: -887272 (full range)</p>
+                </div>
+                <div>
+                  <label htmlFor="tickUpper" className="block text-gray-300 mb-2">
+                    Tick Upper
+                  </label>
+                  <input
+                    id="tickUpper"
+                    type="number"
+                    value={tickUpper}
+                    onChange={e => setTickUpper(Number(e.target.value))}
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
+                    disabled={isLoading || isAILoading}
+                  />
+                  <p className="text-gray-400 text-xs mt-1">Default: 887272 (full range)</p>
+                </div>
+              </div>
+            )}
           </div>
         )}
         
