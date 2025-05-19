@@ -149,7 +149,7 @@ contract Launchpad is Ownable, ReentrancyGuard {
         uint256 amountA,
         uint256 amountB,
         address /*to*/
-    ) external onlyOwner {
+    ) external onlyOwner view {
         require(tokenA != address(0) && tokenB != address(0), "Invalid token addresses");
         require(amountA > 0 && amountB > 0, "Amounts must be positive");
 
