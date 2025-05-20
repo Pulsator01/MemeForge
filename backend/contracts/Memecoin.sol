@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20; // Use a consistent and recent pragma
+pragma solidity ^0.8.20; 
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/access/Ownable.sol"; // Optional: if you want ownership features on the token itself
+import "@openzeppelin/contracts/access/Ownable.sol"; 
 
 // Simple ERC20 Memecoin
 contract Memecoin is ERC20 {
@@ -21,8 +21,7 @@ contract Memecoin is ERC20 {
         _mint(msg.sender, initialSupply);
     }
 
-    // Optional: Add decimals if desired (default is 18 for ERC20)
-    // function decimals() public view virtual override returns (uint8) {
-    //     return 18;
-    // }
+    function decimals() public view virtual override returns (uint8) {
+        return 18;
+    }
 }

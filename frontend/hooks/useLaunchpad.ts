@@ -25,11 +25,15 @@ interface LaunchpadFormData {
   pairedToken: string;
   liquidityMemecoinAmount: string;
   liquidityPairedTokenAmount: string;
-  // V3 params (optional for now, use defaults)
+  // V3 params for Uniswap/Algebra DEX
   fee?: number; // e.g. 3000 for 0.3%
   tickLower?: number; // e.g. -887272
   tickUpper?: number; // e.g. 887272
   deadline?: number; // unix timestamp
+  // New parameters for the updated contract
+  sqrtPriceX96Initial?: string; // Initial square root price for the pool
+  amount0MinExpected?: string; // Minimum expected amount for token0
+  amount1MinExpected?: string; // Minimum expected amount for token1
 }
 
 interface LaunchpadResult {
@@ -102,21 +106,28 @@ export function useLaunchpad() {
       const initialSupply = ethers.parseUnits(formData.initialSupply, 18); // Assumes 18 decimals
       const liquidityMemecoinAmount = ethers.parseUnits(formData.liquidityMemecoinAmount, 18); // Assumes 18 decimals
 
-      // Defaults for V3 params
-      const fee = formData.fee ?? 3000;
-      const tickLower = formData.tickLower ?? -887272;
-      const tickUpper = formData.tickUpper ?? 887272;
-      const deadline = formData.deadline ?? (Math.floor(Date.now() / 1000) + 600);
+      // Default values for new required parameters
+      const sqrtPriceX96Initial = formData.sqrtPriceX96Initial || "79228162514264337593543950336"; // A sensible default (1:1 price)
+      const amount0MinExpected = formData.amount0MinExpected 
+        ? ethers.parseUnits(formData.amount0MinExpected, 18) 
+        : ethers.parseUnits("0", 18); // 0 means no minimum (accept any slippage)
+      const amount1MinExpected = formData.amount1MinExpected 
+        ? ethers.parseUnits(formData.amount1MinExpected, 18) 
+        : ethers.parseUnits("0", 18); // 0 means no minimum (accept any slippage)
+      const deadlineTimestamp = formData.deadline || Math.floor(Date.now() / 1000) + 600; // Default: 10 minutes from now
 
-      // The contract currently does not accept these extra params, but structure for future extension
+      // Call the contract with all required parameters
       const tx = await launchpadContract.launchToken(
         formData.name,
         formData.symbol,
         initialSupply,
         formData.pairedToken,
         liquidityMemecoinAmount,
-        liquidityPairedTokenAmount
-        // fee, tickLower, tickUpper, deadline // for future
+        liquidityPairedTokenAmount,
+        sqrtPriceX96Initial,
+        amount0MinExpected,
+        amount1MinExpected,
+        deadlineTimestamp
       );
 
       // Wait for transaction confirmation
