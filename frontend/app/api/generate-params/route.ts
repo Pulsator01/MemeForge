@@ -18,20 +18,15 @@ async function generateMemeParams(name: string) {
     const randomFactor = Math.floor(Math.random() * 9) + 1;
     const initialSupply = String(baseSupply * randomFactor);
     
-    // Set liquidity amounts (50% of total supply for liquidity in this example)
-    const liquidityMemecoinAmount = String(Math.floor(Number(initialSupply) * 0.5));
-    
-    // Paired token amount (approximately $10k worth of the paired token)
-    // In a real scenario, you'd calculate this based on current token price
-    const liquidityPairedTokenAmount = "10";
+    // Set bonding curve supply (50% of total supply for bonding curve)
+    const bondingCurveSupply = String(Math.floor(Number(initialSupply) * 0.5));
     
     return {
       name,
       symbol,
       initialSupply,
       pairedToken: DEFAULT_PAIRED_TOKEN,
-      liquidityMemecoinAmount,
-      liquidityPairedTokenAmount
+      bondingCurveSupply
     };
   } catch (error) {
     console.error('Error generating parameters:', error);

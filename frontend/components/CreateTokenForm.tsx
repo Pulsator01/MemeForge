@@ -24,8 +24,10 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
   // Memecoin form state
   const [symbol, setSymbol] = useState('');
   const [initialSupply, setInitialSupply] = useState('');
-  const [liquidityMemecoinAmount, setLiquidityMemecoinAmount] = useState('');
-  const [liquidityPairedTokenAmount, setLiquidityPairedTokenAmount] = useState('');
+  const [bondingCurveSupply, setBondingCurveSupply] = useState('');
+  const [priceSteps, setPriceSteps] = useState([
+    { tokenSupplyThreshold: '', pricePerToken: '' }
+  ]);
   
   // UI state
   const [showTokenSection, setShowTokenSection] = useState(false);
@@ -37,12 +39,22 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
   // Launchpad hook
   const { launchToken, loading: tokenLoading, error: tokenError, result: tokenResult } = useLaunchpad();
   
-  // Advanced V3 params
-  const [showAdvanced, setShowAdvanced] = useState(false);
-  const [fee, setFee] = useState(3000);
-  const [tickLower, setTickLower] = useState(-887272);
-  const [tickUpper, setTickUpper] = useState(887272);
-  const [deadline, setDeadline] = useState<number | undefined>(undefined);
+  // Price step management
+  const addPriceStep = () => {
+    setPriceSteps([...priceSteps, { tokenSupplyThreshold: '', pricePerToken: '' }]);
+  };
+
+  const removePriceStep = (index: number) => {
+    if (priceSteps.length > 1) {
+      setPriceSteps(priceSteps.filter((_, i) => i !== index));
+    }
+  };
+
+  const updatePriceStep = (index: number, field: 'tokenSupplyThreshold' | 'pricePerToken', value: string) => {
+    const updated = [...priceSteps];
+    updated[index][field] = value;
+    setPriceSteps(updated);
+  };
   
   // Reset error messages when form fields change
   useEffect(() => {
@@ -93,8 +105,13 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
       // Update form with AI-generated values
       setSymbol(params.symbol);
       setInitialSupply(params.initialSupply);
-      setLiquidityMemecoinAmount(params.liquidityMemecoinAmount);
-      setLiquidityPairedTokenAmount(params.liquidityPairedTokenAmount);
+      setBondingCurveSupply(params.bondingCurveSupply || '500000');
+      // Set default price steps
+      setPriceSteps([
+        { tokenSupplyThreshold: '100000', pricePerToken: '0.001' },
+        { tokenSupplyThreshold: '300000', pricePerToken: '0.002' },
+        { tokenSupplyThreshold: '500000', pricePerToken: '0.005' }
+      ]);
     } catch (error: any) {
       setAIError(error.message || 'Failed to generate parameters');
     } finally {
@@ -108,37 +125,81 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
     setIsLoading(true);
     setError(null);
     
-    // Validate memegent form
-    if (!name.trim()) {
-      setError('Memegent name is required');
-      setIsLoading(false);
-      return;
-    }
-    
-    if (!bio.trim()) {
-      setError('Memegent description is required');
-      setIsLoading(false);
-      return;
-    }
-    
-    // Filter out empty traits
-    const filteredTraits = traits.filter(trait => trait.trim() !== '');
-    if (filteredTraits.length === 0) {
-      setError('At least one trait is required');
-      setIsLoading(false);
-      return;
-    }
-    
-    // Validate token section if expanded
-    if (showTokenSection) {
-      if (!symbol || !initialSupply || !liquidityMemecoinAmount || !liquidityPairedTokenAmount) {
-        setError('All token fields are required');
+    try {
+      // If only testing token deployment (token section is expanded), skip agent creation
+      if (showTokenSection) {
+        // Validate token section
+        if (!symbol || !initialSupply || !bondingCurveSupply) {
+          setError('All token fields are required');
+          setIsLoading(false);
+          return;
+        }
+
+        // Validate price steps
+        const validPriceSteps = priceSteps.filter(step => 
+          step.tokenSupplyThreshold.trim() !== '' && step.pricePerToken.trim() !== ''
+        );
+        
+        if (validPriceSteps.length === 0) {
+          setError('At least one valid price step is required');
+          setIsLoading(false);
+          return;
+        }
+
+        // Deploy the token directly
+        const result = await launchToken({
+          name: name || 'TestToken',
+          symbol,
+          initialSupply,
+          pairedToken: "0x039e2fB66102314Ce7b64Ce5Ce3E5183bc94aD38",
+          bondingCurveSupply,
+          priceSteps: validPriceSteps
+        });
+        
+        if (result.success && result.tokenAddress) {
+          setTokenDeployed(true);
+          setTokenAddress(result.tokenAddress);
+          
+          // Display the address prominently
+          console.log('⭐ Token deployed successfully at:', result.tokenAddress);
+          console.log('🔄 Bonding curve initialized with', validPriceSteps.length, 'price steps');
+          saveMemecoinAddress(result.tokenAddress);
+          
+          // Handle success
+          setSuccess(true);
+          if (onSuccess) {
+            onSuccess();
+          }
+        } else if (result.error) {
+          throw new Error(`Token deployment failed: ${result.error}`);
+        }
+        
         setIsLoading(false);
         return;
       }
-    }
-    
-    try {
+
+      // Original flow: Create memegent (requires server)
+      // Validate memegent form
+      if (!name.trim()) {
+        setError('Memegent name is required');
+        setIsLoading(false);
+        return;
+      }
+      
+      if (!bio.trim()) {
+        setError('Memegent description is required');
+        setIsLoading(false);
+        return;
+      }
+      
+      // Filter out empty traits
+      const filteredTraits = traits.filter(trait => trait.trim() !== '');
+      if (filteredTraits.length === 0) {
+        setError('At least one trait is required');
+        setIsLoading(false);
+        return;
+      }
+      
       // Step 1: Create the memegent
       const agentData = {
         name,
@@ -174,33 +235,6 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
         throw new Error(errorData.detail || 'Failed to create memegent');
       }
 
-      // Step 2: Deploy the token if token section is active
-      if (showTokenSection) {
-        const result = await launchToken({
-          name,
-          symbol,
-          initialSupply,
-          pairedToken: "0x039e2fB66102314Ce7b64Ce5Ce3E5183bc94aD38",
-          liquidityMemecoinAmount,
-          liquidityPairedTokenAmount,
-          fee,
-          tickLower,
-          tickUpper,
-          deadline
-        });
-        
-        if (result.success && result.tokenAddress) {
-          setTokenDeployed(true);
-          setTokenAddress(result.tokenAddress);
-          
-          // Display the address prominently
-          console.log('⭐ Token deployed successfully at:', result.tokenAddress);
-          saveMemecoinAddress(result.tokenAddress);
-        } else if (result.error) {
-          throw new Error(`Token deployment failed: ${result.error}`);
-        }
-      }
-      
       // Handle success
       setSuccess(true);
       if (onSuccess) {
@@ -227,20 +261,36 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
       {success ? (
         <div className="bg-green-500/20 border border-green-500/30 rounded-lg p-4 mb-6">
           <p className="text-green-400">
-            Your memegent has been created successfully!
+            {showTokenSection ? 'Token deployed successfully!' : 'Your memegent has been created successfully!'}
           </p>
-          {tokenDeployed && tokenAddress && tokenResult && tokenResult.lpTokenId && (
+          {tokenDeployed && tokenAddress && tokenResult && (
             <div className="mt-4 bg-blue-500/10 border border-blue-500/30 rounded-lg p-4">
-              <h3 className="text-blue-300 font-bold mb-2">Liquidity Position NFT</h3>
-              <div className="text-blue-200 text-sm">
-                <div><b>Token ID:</b> {tokenResult.lpTokenId}</div>
-                <div><b>Liquidity:</b> {tokenResult.lpLiquidity}</div>
-                <div><b>Amount0:</b> {tokenResult.lpAmount0}</div>
-                <div><b>Amount1:</b> {tokenResult.lpAmount1}</div>
+              <h3 className="text-blue-300 font-bold mb-2">🎉 Bonding Curve Deployed</h3>
+              <div className="text-blue-200 text-sm space-y-1">
+                <div><b>Token Address:</b> <span className="font-mono">{tokenAddress}</span></div>
+                {tokenResult.bondingCurveAddress && (
+                  <div><b>Bonding Curve:</b> <span className="font-mono">{tokenResult.bondingCurveAddress}</span></div>
+                )}
+                {tokenResult.bondingCurveSupply && (
+                  <div><b>Curve Supply:</b> {tokenResult.bondingCurveSupply} tokens</div>
+                )}
+                {tokenResult.creatorSupply && (
+                  <div><b>Creator Supply:</b> {tokenResult.creatorSupply} tokens</div>
+                )}
+                <div className="pt-2">
+                  <a 
+                    href={`https://testnet.sonicscan.org/address/${tokenAddress}`}
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-400 hover:text-blue-300 underline"
+                  >
+                    View on Sonic Explorer →
+                  </a>
+                </div>
               </div>
             </div>
           )}
-          <p className="mt-2 text-green-400">Redirecting...</p>
+          {!showTokenSection && <p className="mt-2 text-green-400">Redirecting...</p>}
         </div>
       ) : error || aiError || tokenError ? (
         <div className="bg-red-500/20 border border-red-500/30 rounded-lg p-4 mb-6">
@@ -398,108 +448,77 @@ export function CreateTokenForm({ onSuccess }: CreateTokenFormProps) {
               />
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="liquidityMemecoinAmount" className="block text-gray-300 mb-2">
-                  Liquidity Memecoin Amount <span className="text-red-400">*</span>
-                </label>
-                <input
-                  id="liquidityMemecoinAmount"
-                  type="text"
-                  value={liquidityMemecoinAmount}
-                  onChange={(e) => setLiquidityMemecoinAmount(e.target.value)}
-                  placeholder="e.g. 500000"
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
-                  disabled={isLoading || isAILoading}
-                />
-              </div>
-              <div>
-                <label htmlFor="liquidityPairedTokenAmount" className="block text-gray-300 mb-2">
-                  Liquidity Paired Token Amount <span className="text-red-400">*</span>
-                </label>
-                <input
-                  id="liquidityPairedTokenAmount"
-                  type="text"
-                  value={liquidityPairedTokenAmount}
-                  onChange={(e) => setLiquidityPairedTokenAmount(e.target.value)}
-                  placeholder="e.g. 10"
-                  className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
-                  disabled={isLoading || isAILoading}
-                />
-              </div>
+            <div>
+              <label htmlFor="bondingCurveSupply" className="block text-gray-300 mb-2">
+                Bonding Curve Supply <span className="text-red-400">*</span>
+              </label>
+              <input
+                id="bondingCurveSupply"
+                type="text"
+                value={bondingCurveSupply}
+                onChange={(e) => setBondingCurveSupply(e.target.value)}
+                placeholder="e.g. 500000"
+                className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
+                disabled={isLoading || isAILoading}
+              />
+              <p className="text-gray-400 text-xs mt-1">Amount of tokens allocated to the bonding curve</p>
             </div>
-            {/* Advanced fields toggle and section */}
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="mt-4 text-xs text-[#32A9FF] hover:text-[#5BBDFF] underline"
-            >
-              {showAdvanced ? 'Hide Advanced' : 'Show Advanced'}
-            </button>
-            {showAdvanced && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                <div>
-                  <label htmlFor="fee" className="block text-gray-300 mb-2">
-                    Fee Tier (bps)
-                  </label>
-                  <input
-                    id="fee"
-                    type="number"
-                    value={fee}
-                    onChange={e => setFee(Number(e.target.value))}
-                    min={100}
-                    max={10000}
-                    step={1}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
-                    disabled={isLoading || isAILoading}
-                  />
-                  <p className="text-gray-400 text-xs mt-1">Default: 3000 (0.3%)</p>
-                </div>
-                <div>
-                  <label htmlFor="deadline" className="block text-gray-300 mb-2">
-                    Deadline (unix timestamp)
-                  </label>
-                  <input
-                    id="deadline"
-                    type="number"
-                    value={deadline ?? ''}
-                    onChange={e => setDeadline(Number(e.target.value) || undefined)}
-                    placeholder="Default: now + 600s"
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
-                    disabled={isLoading || isAILoading}
-                  />
-                  <p className="text-gray-400 text-xs mt-1">Default: 10 minutes from now</p>
-                </div>
-                <div>
-                  <label htmlFor="tickLower" className="block text-gray-300 mb-2">
-                    Tick Lower
-                  </label>
-                  <input
-                    id="tickLower"
-                    type="number"
-                    value={tickLower}
-                    onChange={e => setTickLower(Number(e.target.value))}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
-                    disabled={isLoading || isAILoading}
-                  />
-                  <p className="text-gray-400 text-xs mt-1">Default: -887272 (full range)</p>
-                </div>
-                <div>
-                  <label htmlFor="tickUpper" className="block text-gray-300 mb-2">
-                    Tick Upper
-                  </label>
-                  <input
-                    id="tickUpper"
-                    type="number"
-                    value={tickUpper}
-                    onChange={e => setTickUpper(Number(e.target.value))}
-                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF]"
-                    disabled={isLoading || isAILoading}
-                  />
-                  <p className="text-gray-400 text-xs mt-1">Default: 887272 (full range)</p>
-                </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-gray-300">
+                  Price Steps <span className="text-red-400">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={addPriceStep}
+                  className="text-xs px-2 py-1 bg-[#32A9FF]/20 hover:bg-[#32A9FF]/30 border border-[#32A9FF]/50 rounded-lg transition-colors flex items-center"
+                  disabled={isLoading || isAILoading}
+                >
+                  <Plus size={12} className="mr-1" />
+                  Add Step
+                </button>
               </div>
-            )}
+              
+              {priceSteps.map((step, index) => (
+                <div key={index} className="flex gap-2 mb-2">
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      value={step.tokenSupplyThreshold}
+                      onChange={(e) => updatePriceStep(index, 'tokenSupplyThreshold', e.target.value)}
+                      placeholder="Token threshold"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF] text-sm"
+                      disabled={isLoading || isAILoading}
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <input
+                      type="text"
+                      value={step.pricePerToken}
+                      onChange={(e) => updatePriceStep(index, 'pricePerToken', e.target.value)}
+                      placeholder="Price per token"
+                      className="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#32A9FF] text-sm"
+                      disabled={isLoading || isAILoading}
+                    />
+                  </div>
+                  {priceSteps.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removePriceStep(index)}
+                      className="px-2 py-2 text-red-400 hover:text-red-300 transition-colors"
+                      disabled={isLoading || isAILoading}
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </div>
+              ))}
+              <p className="text-gray-400 text-xs mt-1">
+                Define price steps: threshold = cumulative tokens sold, price = cost per token in paired token
+              </p>
+            </div>
+
           </div>
         )}
         

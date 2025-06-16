@@ -1,23 +1,48 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Rocket, Wallet, Menu } from 'lucide-react'
-import { connectWallet, disconnectWallet } from '../app/utils/web3'
+import { connectWallet, disconnectWallet, getConnectedWallet } from '../app/utils/web3'
 
 export function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const [walletAddress, setWalletAddress] = useState<string>('');
+  const [isConnecting, setIsConnecting] = useState(false);
+
+  // Check for existing wallet connection on page load
+  useEffect(() => {
+    const checkWalletConnection = async () => {
+      try {
+        const wallet = await getConnectedWallet();
+        if (wallet && wallet.address) {
+          setWalletAddress(wallet.address);
+        }
+      } catch (error) {
+        // Silently fail - wallet not connected
+      }
+    };
+
+    checkWalletConnection();
+  }, []);
 
   const handleConnect = async () => {
+    if (isConnecting) return;
+    
+    setIsConnecting(true);
     try {
       const wallet = await connectWallet();
       if (wallet && wallet.address) {
         setWalletAddress(wallet.address);
       }
-    } catch (error) {
-      console.error('Failed to connect wallet:', error);
+    } catch (error: any) {
+      // Only show error if it's not user rejection
+      if (error.code !== 4001) {
+        console.error('Failed to connect wallet:', error);
+      }
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -25,6 +50,11 @@ export function Navbar() {
     disconnectWallet();
     setWalletAddress('');
   };
+
+  // Truncate wallet address for display
+  const displayAddress = walletAddress 
+    ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+    : '';
 
   return (
     <nav className="fixed w-full z-50 glassmorphic">
@@ -51,13 +81,14 @@ export function Navbar() {
                   whileTap={{ scale: 0.95 }}
                   className="px-6 py-2 rounded-lg bg-gradient-to-r from-[#32A9FF] to-[#BB40FF] text-white font-semibold flex items-center space-x-2"
                   onClick={handleConnect}
+                  disabled={isConnecting}
                 >
                   <Wallet className="h-4 w-4" />
-                  <span>Connect Wallet</span>
+                  <span>{isConnecting ? 'Connecting...' : 'Connect Wallet'}</span>
                 </motion.button>
               ) : (
                 <div className="flex items-center space-x-4">
-                  <p className="text-white font-mono text-sm">{walletAddress}</p>
+                  <p className="text-white font-mono text-sm">{displayAddress}</p>
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -94,14 +125,15 @@ export function Navbar() {
             {!walletAddress ? (
               <button
                 onClick={handleConnect}
+                disabled={isConnecting}
                 className="w-full mt-4 px-6 py-2 rounded-lg bg-gradient-to-r from-[#32A9FF] to-[#BB40FF] text-white font-semibold flex items-center justify-center space-x-2"
               >
                 <Wallet className="h-4 w-4" />
-                <span>Connect Wallet</span>
+                <span>{isConnecting ? 'Connecting...' : 'Connect Wallet'}</span>
               </button>
             ) : (
               <div className="flex flex-col items-center space-y-2">
-                <p className="text-white font-mono text-sm">{walletAddress}</p>
+                <p className="text-white font-mono text-sm">{displayAddress}</p>
                 <button
                   onClick={handleDisconnect}
                   className="px-6 py-2 rounded-lg bg-red-600 text-white font-semibold"

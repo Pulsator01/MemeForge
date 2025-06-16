@@ -7,8 +7,7 @@ interface AIGeneratedParams {
   symbol: string;
   initialSupply: string;
   pairedToken: string;
-  liquidityMemecoinAmount: string;
-  liquidityPairedTokenAmount: string;
+  bondingCurveSupply: string;
 }
 
 /**

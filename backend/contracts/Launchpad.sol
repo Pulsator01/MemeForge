@@ -6,40 +6,36 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./Memecoin.sol";
-import "./interfaces/IPositionManager.sol";
+import "./BondingCurve.sol";
 
 contract Launchpad is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
+
+    struct PriceStep {
+        uint256 tokenSupplyThreshold;
+        uint256 pricePerToken;
+    }
 
     event TokenLaunched(
         address indexed creator,
         address indexed tokenAddress,
         uint256 initialSupply,
         address pairedToken,
-        uint256 liquidityMemecoinAmount,
-        uint256 liquidityPairedTokenAmount,
-        uint160 sqrtPriceX96Initial
+        uint256 bondingCurveSupply,
+        uint256 creatorSupply
     );
 
-    event LiquidityProvided(
-        address indexed token0,
-        address indexed token1,
-        uint256 tokenId,
-        uint128 liquidity,
-        uint256 amount0,
-        uint256 amount1
+    event BondingCurveInitialized(
+        address indexed tokenAddress,
+        address indexed bondingCurve,
+        uint256 stepCount
     );
 
-    address public immutable positionManager;
+    address public immutable bondingCurve;
 
-    // Uniswap V3/Algebra constants
-    int24 private constant MIN_TICK = -887272;
-    int24 private constant MAX_TICK = 887272;
-    uint24 private constant DEFAULT_FEE = 3000; // 0.3%
-
-    constructor(address _positionManager) Ownable(msg.sender) {
-        require(_positionManager != address(0), "PositionManager address cannot be zero");
-        positionManager = _positionManager;
+    constructor(address _bondingCurve) Ownable(msg.sender) {
+        require(_bondingCurve != address(0), "BondingCurve address cannot be zero");
+        bondingCurve = _bondingCurve;
     }
 
     function launchToken(
@@ -47,43 +43,39 @@ contract Launchpad is Ownable, ReentrancyGuard {
         string memory symbol,
         uint256 initialSupply,
         address pairedTokenAddress,
-        uint256 liquidityMemecoinAmount,
-        uint256 liquidityPairedTokenAmount,
-        uint160 sqrtPriceX96Initial,
-        uint256 amount0MinExpected,
-        uint256 amount1MinExpected,
-        uint256 deadlineTimestamp
+        uint256 bondingCurveSupply,
+        PriceStep[] memory priceSteps
     ) external nonReentrant {
         require(bytes(name).length > 0, "Token name cannot be empty");
         require(bytes(symbol).length > 0, "Token symbol cannot be empty");
         require(initialSupply > 0, "Initial supply must be greater than 0");
         require(pairedTokenAddress != address(0), "Paired token address cannot be zero");
-        require(liquidityMemecoinAmount > 0, "Liquidity memecoin amount must be greater than 0");
-        require(liquidityPairedTokenAmount > 0, "Liquidity paired token amount must be greater than 0");
-        require(initialSupply >= liquidityMemecoinAmount, "Initial supply must cover liquidity amount");
+        require(bondingCurveSupply > 0, "Bonding curve supply must be greater than 0");
+        require(bondingCurveSupply <= initialSupply, "Bonding curve supply cannot exceed initial supply");
+        require(priceSteps.length > 0, "Must provide at least one price step");
 
-        IERC20 pairedToken = IERC20(pairedTokenAddress);
-        require(
-            pairedToken.balanceOf(msg.sender) >= liquidityPairedTokenAmount,
-            "Insufficient paired token balance for liquidity"
-        );
-        require(
-            pairedToken.allowance(msg.sender, address(this)) >= liquidityPairedTokenAmount,
-            "Launchpad requires paired token allowance for liquidity"
-        );
+        // Validate price steps
+        uint256 lastThreshold = 0;
+        for (uint256 i = 0; i < priceSteps.length; i++) {
+            require(priceSteps[i].tokenSupplyThreshold > lastThreshold, "Price step thresholds must be ascending");
+            require(priceSteps[i].tokenSupplyThreshold <= bondingCurveSupply, "Price step threshold exceeds bonding curve supply");
+            require(priceSteps[i].pricePerToken > 0, "Price must be greater than 0");
+            lastThreshold = priceSteps[i].tokenSupplyThreshold;
+        }
 
         // Deploy the new memecoin
         Memecoin newMemecoin = new Memecoin(name, symbol, initialSupply);
         address newMemecoinAddress = address(newMemecoin);
 
-        // Transfer paired tokens from user to this contract
-        pairedToken.safeTransferFrom(msg.sender, address(this), liquidityPairedTokenAmount);
+        // Calculate creator's portion
+        uint256 creatorSupply = initialSupply - bondingCurveSupply;
 
-        // Transfer memecoin liquidity portion to this contract (already owned by Launchpad)
-        // Transfer the rest to the creator
-        uint256 creatorMemecoinAmount = initialSupply - liquidityMemecoinAmount;
-        if (creatorMemecoinAmount > 0) {
-            IERC20(newMemecoinAddress).safeTransfer(msg.sender, creatorMemecoinAmount);
+        // Transfer bonding curve supply to bonding curve contract
+        IERC20(newMemecoinAddress).safeTransfer(bondingCurve, bondingCurveSupply);
+
+        // Transfer creator's portion to creator
+        if (creatorSupply > 0) {
+            IERC20(newMemecoinAddress).safeTransfer(msg.sender, creatorSupply);
         }
 
         emit TokenLaunched(
@@ -91,75 +83,82 @@ contract Launchpad is Ownable, ReentrancyGuard {
             newMemecoinAddress,
             initialSupply,
             pairedTokenAddress,
-            liquidityMemecoinAmount,
-            liquidityPairedTokenAmount,
-            sqrtPriceX96Initial
+            bondingCurveSupply,
+            creatorSupply
         );
 
-        // Approve position manager to spend tokens
-        IERC20(newMemecoinAddress).approve(positionManager, liquidityMemecoinAmount);
-        pairedToken.approve(positionManager, liquidityPairedTokenAmount);
+        // Convert memory array to calldata-compatible format for bonding curve
+        BondingCurve.PriceStep[] memory bondingCurveSteps = new BondingCurve.PriceStep[](priceSteps.length);
+        for (uint256 i = 0; i < priceSteps.length; i++) {
+            bondingCurveSteps[i] = BondingCurve.PriceStep({
+                tokenSupplyThreshold: priceSteps[i].tokenSupplyThreshold,
+                pricePerToken: priceSteps[i].pricePerToken
+            });
+        }
 
-        // Create pool if necessary and mint position (full range)
-        IPositionManager pm = IPositionManager(positionManager);
+        // Initialize bonding curve for the token
+        BondingCurve(bondingCurve).initializeToken(
+            newMemecoinAddress,
+            pairedTokenAddress,
+            bondingCurveSupply,
+            bondingCurveSteps
+        );
 
-        // Determine token0 and token1 for pool creation and minting
-        address token0 = newMemecoinAddress < pairedTokenAddress ? newMemecoinAddress : pairedTokenAddress;
-        address token1 = newMemecoinAddress < pairedTokenAddress ? pairedTokenAddress : newMemecoinAddress;
-        uint256 amount0ForPool = newMemecoinAddress < pairedTokenAddress ? liquidityMemecoinAmount : liquidityPairedTokenAmount;
-        uint256 amount1ForPool = newMemecoinAddress < pairedTokenAddress ? liquidityPairedTokenAmount : liquidityMemecoinAmount;
-
-        // The initial square root price is now provided by the caller.
-        // createAndInitializePoolIfNecessary will create the pool if it doesn't exist.
-        // The caller is responsible for providing a valid sqrtPriceX96Initial, especially for new pools.
-        require(sqrtPriceX96Initial != 0, "Initial price cannot be zero"); // Basic check
-
-        pm.createAndInitializePoolIfNecessary(token0, token1, DEFAULT_FEE, sqrtPriceX96Initial);
-
-        IPositionManager.MintParams memory params = IPositionManager.MintParams({
-            token0: token0,
-            token1: token1,
-            fee: DEFAULT_FEE,
-            tickLower: MIN_TICK,
-            tickUpper: MAX_TICK,
-            amount0Desired: amount0ForPool,
-            amount1Desired: amount1ForPool,
-            amount0Min: amount0MinExpected,
-            amount1Min: amount1MinExpected,
-            recipient: msg.sender,
-            deadline: deadlineTimestamp
-        });
-
-        (uint256 tokenId, uint128 liquidity, uint256 amount0, uint256 amount1) = pm.mint(params);
-
-        emit LiquidityProvided(
-            params.token0,
-            params.token1,
-            tokenId,
-            liquidity,
-            amount0,
-            amount1
+        emit BondingCurveInitialized(
+            newMemecoinAddress,
+            bondingCurve,
+            priceSteps.length
         );
     }
 
+    // Helper function to get current token price from bonding curve
+    function getCurrentPrice(address tokenAddress) external view returns (uint256) {
+        return BondingCurve(bondingCurve).getCurrentPrice(tokenAddress);
+    }
+
+    // Helper function to calculate buy price
+    function calculateBuyPrice(address tokenAddress, uint256 amount) 
+        external 
+        view 
+        returns (uint256 totalCost, uint256 protocolFee) 
+    {
+        return BondingCurve(bondingCurve).calculateBuyPrice(tokenAddress, amount);
+    }
+
+    // Helper function to calculate sell price
+    function calculateSellPrice(address tokenAddress, uint256 amount) 
+        external 
+        view 
+        returns (uint256 totalReceived, uint256 protocolFee) 
+    {
+        return BondingCurve(bondingCurve).calculateSellPrice(tokenAddress, amount);
+    }
+
+    // Helper function to get token information
+    function getTokenInfo(address tokenAddress) 
+        external 
+        view 
+        returns (
+            address pairedToken,
+            uint256 totalSupply,
+            uint256 circulatingSupply,
+            uint256 reserveBalance,
+            uint256 currentPrice
+        ) 
+    {
+        return BondingCurve(bondingCurve).getTokenInfo(tokenAddress);
+    }
+
+    // Legacy function for backward compatibility (now deprecated)
     function addLiquidityToDEX(
         address /*dexRouterAddress*/,
-        address tokenA,
-        address tokenB,
-        uint256 amountA,
-        uint256 amountB,
+        address /*tokenA*/,
+        address /*tokenB*/,
+        uint256 /*amountA*/,
+        uint256 /*amountB*/,
         address /*to*/
-    ) external onlyOwner view {
-        require(tokenA != address(0) && tokenB != address(0), "Invalid token addresses");
-        require(amountA > 0 && amountB > 0, "Amounts must be positive");
-
-        IERC20 tokenContractA = IERC20(tokenA);
-        IERC20 tokenContractB = IERC20(tokenB);
-
-        require(tokenContractA.balanceOf(address(this)) >= amountA, "Insufficient memecoin balance for LP");
-        require(tokenContractB.balanceOf(address(this)) >= amountB, "Insufficient paired token balance for LP");
-
-        revert("DEX interaction not implemented");
+    ) external pure {
+        revert("Legacy function deprecated - use bonding curve instead");
     }
 
     function withdrawToken(address tokenAddress, uint256 amount) external onlyOwner {

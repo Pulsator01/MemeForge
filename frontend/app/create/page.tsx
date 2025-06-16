@@ -16,28 +16,37 @@ export default function CreateTokenPage() {
   const [initialSupply, setInitialSupply] = useState('')
   // Hard-coded paired token address
   const pairedToken = "0x039e2fB66102314Ce7b64Ce5Ce3E5183bc94aD38"
-  const [liquidityMemecoinAmount, setLiquidityMemecoinAmount] = useState('')
-  const [liquidityPairedTokenAmount, setLiquidityPairedTokenAmount] = useState('')
+  const [bondingCurveSupply, setBondingCurveSupply] = useState('')
+  const [priceSteps, setPriceSteps] = useState([{ tokenSupplyThreshold: '', pricePerToken: '' }])
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [AIError, setAIError] = useState<string | null>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    // Validate form fields (update validation to exclude pairedToken)
-    if (!name.trim() || !symbol.trim() || !initialSupply || !liquidityMemecoinAmount || !liquidityPairedTokenAmount) {
+    // Validate form fields for bonding curve
+    if (!name.trim() || !symbol.trim() || !initialSupply || !bondingCurveSupply) {
       setAIError('All fields are required')
       return
     }
+
+    const validPriceSteps = priceSteps.filter(step => 
+      step.tokenSupplyThreshold.trim() !== '' && step.pricePerToken.trim() !== ''
+    );
     
-    // Call contract to launch token (using hard-coded pairedToken)
+    if (validPriceSteps.length === 0) {
+      setAIError('At least one valid price step is required')
+      return
+    }
+    
+    // Call contract to launch token with bonding curve
     const result = await launchToken({
       name,
       symbol,
       initialSupply,
       pairedToken,
-      liquidityMemecoinAmount,
-      liquidityPairedTokenAmount
+      bondingCurveSupply,
+      priceSteps: validPriceSteps
     })
     
     if (result.success && result.tokenAddress) {
@@ -48,8 +57,8 @@ export default function CreateTokenPage() {
         setName('')
         setSymbol('')
         setInitialSupply('')
-        setLiquidityMemecoinAmount('')
-        setLiquidityPairedTokenAmount('')
+        setBondingCurveSupply('')
+        setPriceSteps([{ tokenSupplyThreshold: '', pricePerToken: '' }])
         setSuccessMessage(null)
       }, 5000)
     }
