@@ -163,4 +163,44 @@ contract Launchpad is Ownable, ReentrancyGuard {
         tokenContract.safeTransfer(msg.sender, actualAmount);
         emit TokenWithdrawn(tokenAddress, actualAmount, msg.sender);
     }
+
+    // ==========================
+    // Optional governance bridge
+    // Enables Launchpad-owned governance of BondingCurve admin actions.
+    // These calls only work if the Launchpad is the BondingCurve owner.
+    // ==========================
+
+    // Queue timelocked changes on BondingCurve
+    function queueSetProtocolFeeOnCurve(uint256 newFeeBps, uint256 executeAfter) external onlyOwner {
+        BondingCurve(bondingCurve).queueSetProtocolFee(newFeeBps, executeAfter);
+    }
+
+    function queueSetFeeRecipientOnCurve(address newFeeRecipient, uint256 executeAfter) external onlyOwner {
+        BondingCurve(bondingCurve).queueSetFeeRecipient(newFeeRecipient, executeAfter);
+    }
+
+    function queueSetInitializerOnCurve(address initializer, bool allowed, uint256 executeAfter) external onlyOwner {
+        BondingCurve(bondingCurve).queueSetInitializer(initializer, allowed, executeAfter);
+    }
+
+    function queueEmergencyWithdrawOnCurve(address token, uint256 amount, uint256 executeAfter) external onlyOwner {
+        BondingCurve(bondingCurve).queueEmergencyWithdraw(token, amount, executeAfter);
+    }
+
+    // Execute timelocked admin actions on BondingCurve
+    function setProtocolFeeOnCurve(uint256 newFeeBps) external onlyOwner {
+        BondingCurve(bondingCurve).setProtocolFee(newFeeBps);
+    }
+
+    function setFeeRecipientOnCurve(address newFeeRecipient) external onlyOwner {
+        BondingCurve(bondingCurve).setFeeRecipient(newFeeRecipient);
+    }
+
+    function setInitializerOnCurve(address initializer, bool allowed) external onlyOwner {
+        BondingCurve(bondingCurve).setInitializer(initializer, allowed);
+    }
+
+    function emergencyWithdrawOnCurve(address token, uint256 amount) external onlyOwner {
+        BondingCurve(bondingCurve).emergencyWithdraw(token, amount);
+    }
 }

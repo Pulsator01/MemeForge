@@ -28,6 +28,9 @@ contract BondingCurve is Ownable, ReentrancyGuard {
 
     mapping(address => TokenInfo) public tokenInfos;
     mapping(address => bool) public authorizedInitializers;
+    // Track tokens involved in pools to protect reserves from emergency withdraws
+    mapping(address => bool) public isMemecoinRegistered;
+    mapping(address => bool) public isPairedTokenUsed;
     
     // Protocol fee in basis points (100 = 1%)
     uint256 public protocolFeeBps = 200;  // 2%
@@ -66,10 +69,24 @@ contract BondingCurve is Ownable, ReentrancyGuard {
     event ProtocolFeeUpdated(uint256 oldFeeBps, uint256 newFeeBps);
     event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
     event EmergencyWithdraw(address indexed token, uint256 amount, address indexed to);
+    // Timelock/admin events
+    event AdminActionQueued(bytes32 indexed actionId, string action, uint256 executeAfter);
+    event AdminActionExecuted(bytes32 indexed actionId, string action);
+    event TimelockActivated(uint256 bootstrapEndsAt, uint256 minDelaySeconds);
+
+    // Admin timelock configuration
+    uint256 public constant ADMIN_MIN_DELAY = 1 days;
+    uint256 public immutable bootstrapEndsAt; // window to bypass timelock for initial setup
+    bool public immutable timelockEnabled; // timelock is enabled from deployment, bypassed only during bootstrap
+    mapping(bytes32 => uint256) public queuedActions; // actionId => executeAfter timestamp
 
     constructor(address _feeRecipient) Ownable(msg.sender) {
         require(_feeRecipient != address(0), "Invalid fee recipient");
         feeRecipient = _feeRecipient;
+        // Enable timelock immediately but allow a bootstrap window for deployment wiring
+        timelockEnabled = true;
+        bootstrapEndsAt = block.timestamp + 1 days;
+        emit TimelockActivated(bootstrapEndsAt, ADMIN_MIN_DELAY);
     }
 
     modifier onlyOwnerOrInitializer() {
@@ -97,6 +114,10 @@ contract BondingCurve is Ownable, ReentrancyGuard {
         tokenInfo.reserveBalance = 0;
         tokenInfo.memecoinDecimals = IERC20Metadata(memecoin).decimals();
         tokenInfo.initialized = true;
+
+        // Mark tokens as protected for reserve safety
+        isMemecoinRegistered[memecoin] = true;
+        isPairedTokenUsed[pairedToken] = true;
 
         // Validate and add price steps
         uint256 lastThreshold = 0;
@@ -313,7 +334,58 @@ contract BondingCurve is Ownable, ReentrancyGuard {
         return tokenInfo.priceSteps;
     }
 
+    // -----------------
+    // Timelock helpers
+    // -----------------
+    function _inBootstrap() internal view returns (bool) {
+        return block.timestamp < bootstrapEndsAt;
+    }
+
+    function _requireTimelock(bytes32 actionId, string memory actionName) internal {
+        if (timelockEnabled && !_inBootstrap()) {
+            uint256 eta = queuedActions[actionId];
+            require(eta != 0 && block.timestamp >= eta, "Timelock not satisfied");
+            // consume the queued action
+            delete queuedActions[actionId];
+            emit AdminActionExecuted(actionId, actionName);
+        }
+    }
+
+    // Queue functions
+    function queueSetProtocolFee(uint256 newFeeBps, uint256 executeAfter) external onlyOwner {
+        require(executeAfter >= block.timestamp + ADMIN_MIN_DELAY, "Delay too short");
+        bytes32 actionId = keccak256(abi.encode("setProtocolFee", newFeeBps));
+        queuedActions[actionId] = executeAfter;
+        emit AdminActionQueued(actionId, "setProtocolFee", executeAfter);
+    }
+
+    function queueSetFeeRecipient(address newFeeRecipient, uint256 executeAfter) external onlyOwner {
+        require(newFeeRecipient != address(0), "Invalid fee recipient");
+        require(executeAfter >= block.timestamp + ADMIN_MIN_DELAY, "Delay too short");
+        bytes32 actionId = keccak256(abi.encode("setFeeRecipient", newFeeRecipient));
+        queuedActions[actionId] = executeAfter;
+        emit AdminActionQueued(actionId, "setFeeRecipient", executeAfter);
+    }
+
+    function queueSetInitializer(address initializer, bool allowed, uint256 executeAfter) external onlyOwner {
+        require(initializer != address(0), "Invalid initializer");
+        require(executeAfter >= block.timestamp + ADMIN_MIN_DELAY, "Delay too short");
+        bytes32 actionId = keccak256(abi.encode("setInitializer", initializer, allowed));
+        queuedActions[actionId] = executeAfter;
+        emit AdminActionQueued(actionId, "setInitializer", executeAfter);
+    }
+
+    function queueEmergencyWithdraw(address token, uint256 amount, uint256 executeAfter) external onlyOwner {
+        require(executeAfter >= block.timestamp + ADMIN_MIN_DELAY, "Delay too short");
+        bytes32 actionId = keccak256(abi.encode("emergencyWithdraw", token, amount));
+        queuedActions[actionId] = executeAfter;
+        emit AdminActionQueued(actionId, "emergencyWithdraw", executeAfter);
+    }
+
+    // Timelocked admin functions
     function setProtocolFee(uint256 newFeeBps) external onlyOwner {
+        bytes32 actionId = keccak256(abi.encode("setProtocolFee", newFeeBps));
+        _requireTimelock(actionId, "setProtocolFee");
         require(newFeeBps <= 1000, "Fee cannot exceed 10%"); // Max 10%
         uint256 old = protocolFeeBps;
         protocolFeeBps = newFeeBps;
@@ -321,6 +393,8 @@ contract BondingCurve is Ownable, ReentrancyGuard {
     }
 
     function setFeeRecipient(address newFeeRecipient) external onlyOwner {
+        bytes32 actionId = keccak256(abi.encode("setFeeRecipient", newFeeRecipient));
+        _requireTimelock(actionId, "setFeeRecipient");
         require(newFeeRecipient != address(0), "Invalid fee recipient");
         address old = feeRecipient;
         feeRecipient = newFeeRecipient;
@@ -328,12 +402,19 @@ contract BondingCurve is Ownable, ReentrancyGuard {
     }
 
     function setInitializer(address initializer, bool allowed) external onlyOwner {
+        bytes32 actionId = keccak256(abi.encode("setInitializer", initializer, allowed));
+        _requireTimelock(actionId, "setInitializer");
         require(initializer != address(0), "Invalid initializer");
         authorizedInitializers[initializer] = allowed;
         emit InitializerUpdated(initializer, allowed);
     }
 
+    // Only allow emergency withdraws of tokens that are NOT involved in any pool
+    // This protects reserves and inventory. Still timelocked.
     function emergencyWithdraw(address token, uint256 amount) external onlyOwner {
+        bytes32 actionId = keccak256(abi.encode("emergencyWithdraw", token, amount));
+        _requireTimelock(actionId, "emergencyWithdraw");
+        require(!isPairedTokenUsed[token] && !isMemecoinRegistered[token], "Protected token");
         IERC20(token).safeTransfer(msg.sender, amount);
         emit EmergencyWithdraw(token, amount, msg.sender);
     }
