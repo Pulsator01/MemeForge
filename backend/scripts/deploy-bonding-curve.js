@@ -19,12 +19,13 @@ async function main() {
     const Launchpad = await ethers.getContractFactory("Launchpad");
     const launchpad = await Launchpad.deploy(await bondingCurve.getAddress());
     await launchpad.waitForDeployment();
-    
-    console.log("Launchpad deployed to:", await launchpad.getAddress());
+    const launchpadAddress = await launchpad.getAddress();
+    console.log("Launchpad deployed to:", launchpadAddress);
 
-    // Set Launchpad as owner of BondingCurve so it can initialize tokens
-    await bondingCurve.transferOwnership(await launchpad.getAddress());
-    console.log("Transferred BondingCurve ownership to Launchpad");
+    // Authorize Launchpad as initializer (keeps deployer as owner)
+    const tx = await bondingCurve.setInitializer(launchpadAddress, true);
+    await tx.wait();
+    console.log("Authorized Launchpad as BondingCurve initializer");
 
     console.log("\n=== Deployment Summary ===");
     console.log("BondingCurve:", await bondingCurve.getAddress());

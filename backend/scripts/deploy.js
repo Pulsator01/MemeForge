@@ -24,9 +24,10 @@ async function main() {
     const launchpadAddress = await launchpad.getAddress();
     console.log("Launchpad deployed to:", launchpadAddress);
 
-    // Step 3: Transfer BondingCurve ownership to Launchpad
-    await bondingCurve.transferOwnership(launchpadAddress);
-    console.log("Transferred BondingCurve ownership to Launchpad");
+    // Step 3: Authorize Launchpad as initializer (keeps deployer as owner)
+    const tx = await bondingCurve.setInitializer(launchpadAddress, true);
+    await tx.wait();
+    console.log("Authorized Launchpad as BondingCurve initializer");
 
     console.log("\n=== Deployment Summary ===");
     console.log("BondingCurve:", bondingCurveAddress);
