@@ -31,6 +31,8 @@ contract Launchpad is Ownable, ReentrancyGuard {
         uint256 stepCount
     );
 
+    event TokenWithdrawn(address indexed token, uint256 amount, address indexed to);
+
     address public immutable bondingCurve;
 
     constructor(address _bondingCurve) Ownable(msg.sender) {
@@ -66,6 +68,9 @@ contract Launchpad is Ownable, ReentrancyGuard {
         // Deploy the new memecoin
         Memecoin newMemecoin = new Memecoin(name, symbol, initialSupply);
         address newMemecoinAddress = address(newMemecoin);
+
+        // Prevent pairing the token with itself
+        require(pairedTokenAddress != newMemecoinAddress, "Paired token cannot be the same as memecoin");
 
         // Calculate creator's portion
         uint256 creatorSupply = initialSupply - bondingCurveSupply;
@@ -149,18 +154,6 @@ contract Launchpad is Ownable, ReentrancyGuard {
         return BondingCurve(bondingCurve).getTokenInfo(tokenAddress);
     }
 
-    // Legacy function for backward compatibility (now deprecated)
-    function addLiquidityToDEX(
-        address /*dexRouterAddress*/,
-        address /*tokenA*/,
-        address /*tokenB*/,
-        uint256 /*amountA*/,
-        uint256 /*amountB*/,
-        address /*to*/
-    ) external pure {
-        revert("Legacy function deprecated - use bonding curve instead");
-    }
-
     function withdrawToken(address tokenAddress, uint256 amount) external onlyOwner {
         require(tokenAddress != address(0), "Invalid token address");
         IERC20 tokenContract = IERC20(tokenAddress);
@@ -168,5 +161,6 @@ contract Launchpad is Ownable, ReentrancyGuard {
         require(balance >= amount, "Insufficient balance");
         uint256 actualAmount = (amount == 0) ? balance : amount;
         tokenContract.safeTransfer(msg.sender, actualAmount);
+        emit TokenWithdrawn(tokenAddress, actualAmount, msg.sender);
     }
 }

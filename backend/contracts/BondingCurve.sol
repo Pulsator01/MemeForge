@@ -2,6 +2,7 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
@@ -21,14 +22,18 @@ contract BondingCurve is Ownable, ReentrancyGuard {
         uint256 circulatingSupply;    // Tokens sold through bonding curve
         uint256 reserveBalance;       // Paired token reserves
         PriceStep[] priceSteps;
+        uint8 memecoinDecimals;       // Decimals of the memecoin used for math scaling
         bool initialized;
     }
 
     mapping(address => TokenInfo) public tokenInfos;
+    mapping(address => bool) public authorizedInitializers;
     
     // Protocol fee in basis points (100 = 1%)
     uint256 public protocolFeeBps = 200;  // 2%
     address public feeRecipient;
+
+    event InitializerUpdated(address indexed initializer, bool allowed);
 
     event TokenBuy(
         address indexed buyer,
@@ -58,9 +63,18 @@ contract BondingCurve is Ownable, ReentrancyGuard {
         uint256 totalSupply
     );
 
+    event ProtocolFeeUpdated(uint256 oldFeeBps, uint256 newFeeBps);
+    event FeeRecipientUpdated(address indexed oldRecipient, address indexed newRecipient);
+    event EmergencyWithdraw(address indexed token, uint256 amount, address indexed to);
+
     constructor(address _feeRecipient) Ownable(msg.sender) {
         require(_feeRecipient != address(0), "Invalid fee recipient");
         feeRecipient = _feeRecipient;
+    }
+
+    modifier onlyOwnerOrInitializer() {
+        require(owner() == msg.sender || authorizedInitializers[msg.sender], "Not authorized");
+        _;
     }
 
     function initializeToken(
@@ -68,8 +82,9 @@ contract BondingCurve is Ownable, ReentrancyGuard {
         address pairedToken,
         uint256 totalSupply,
         PriceStep[] calldata initialPriceSteps
-    ) external onlyOwner {
+    ) external onlyOwnerOrInitializer {
         require(memecoin != address(0) && pairedToken != address(0), "Invalid token addresses");
+        require(memecoin != pairedToken, "Memecoin and paired token must differ");
         require(totalSupply > 0, "Total supply must be positive");
         require(initialPriceSteps.length > 0, "Must have at least one price step");
         require(!tokenInfos[memecoin].initialized, "Token already initialized");
@@ -80,6 +95,7 @@ contract BondingCurve is Ownable, ReentrancyGuard {
         tokenInfo.totalSupply = totalSupply;
         tokenInfo.circulatingSupply = 0;
         tokenInfo.reserveBalance = 0;
+        tokenInfo.memecoinDecimals = IERC20Metadata(memecoin).decimals();
         tokenInfo.initialized = true;
 
         // Validate and add price steps
@@ -132,6 +148,7 @@ contract BondingCurve is Ownable, ReentrancyGuard {
         uint256 currentSupply = tokenInfo.circulatingSupply;
         uint256 remainingAmount = memecoinAmount;
         uint256 cost = 0;
+        uint256 scale = 10 ** uint256(tokenInfo.memecoinDecimals);
 
         // Calculate cost across potentially multiple price steps
         for (uint256 i = 0; i < tokenInfo.priceSteps.length && remainingAmount > 0; i++) {
@@ -144,7 +161,7 @@ contract BondingCurve is Ownable, ReentrancyGuard {
             uint256 availableInStep = step.tokenSupplyThreshold - currentSupply;
             uint256 amountInStep = remainingAmount > availableInStep ? availableInStep : remainingAmount;
 
-            cost += amountInStep * step.pricePerToken / 1e18;
+            cost += amountInStep * step.pricePerToken / scale;
             currentSupply += amountInStep;
             remainingAmount -= amountInStep;
         }
@@ -168,6 +185,7 @@ contract BondingCurve is Ownable, ReentrancyGuard {
         uint256 currentSupply = tokenInfo.circulatingSupply;
         uint256 remainingAmount = memecoinAmount;
         uint256 revenue = 0;
+        uint256 scale = 10 ** uint256(tokenInfo.memecoinDecimals);
 
         // Calculate revenue across potentially multiple price steps (in reverse)
         for (int256 i = int256(tokenInfo.priceSteps.length) - 1; i >= 0 && remainingAmount > 0; i--) {
@@ -181,7 +199,7 @@ contract BondingCurve is Ownable, ReentrancyGuard {
             uint256 availableInStep = currentSupply - lowerBound;
             uint256 amountInStep = remainingAmount > availableInStep ? availableInStep : remainingAmount;
 
-            revenue += amountInStep * step.pricePerToken / 1e18;
+            revenue += amountInStep * step.pricePerToken / scale;
             currentSupply -= amountInStep;
             remainingAmount -= amountInStep;
         }
@@ -297,15 +315,26 @@ contract BondingCurve is Ownable, ReentrancyGuard {
 
     function setProtocolFee(uint256 newFeeBps) external onlyOwner {
         require(newFeeBps <= 1000, "Fee cannot exceed 10%"); // Max 10%
+        uint256 old = protocolFeeBps;
         protocolFeeBps = newFeeBps;
+        emit ProtocolFeeUpdated(old, newFeeBps);
     }
 
     function setFeeRecipient(address newFeeRecipient) external onlyOwner {
         require(newFeeRecipient != address(0), "Invalid fee recipient");
+        address old = feeRecipient;
         feeRecipient = newFeeRecipient;
+        emit FeeRecipientUpdated(old, newFeeRecipient);
+    }
+
+    function setInitializer(address initializer, bool allowed) external onlyOwner {
+        require(initializer != address(0), "Invalid initializer");
+        authorizedInitializers[initializer] = allowed;
+        emit InitializerUpdated(initializer, allowed);
     }
 
     function emergencyWithdraw(address token, uint256 amount) external onlyOwner {
         IERC20(token).safeTransfer(msg.sender, amount);
+        emit EmergencyWithdraw(token, amount, msg.sender);
     }
 } 
